@@ -329,22 +329,79 @@
         "name": "大力丸",
         "type": "丹药",
         "rank": "凡品",
-        "description": "凡人所制的丹丸，据说能临时增长力气。",
-        "price": 30
+        "description": "凡人所制的丹丸，据说能临时增长力气，但药劲粗糙，会损伤筋骨。",
+        "price": 30,
+        "effect": {
+            "add_attack": 25,
+            "add_defense": -10,
+            "add_hp": -50
+        }
     },
     "1029": {
         "name": "辟谷丹",
         "type": "丹药",
         "rank": "凡品",
-        "description": "服用后可七日不饥，是修士闭关常备之物。",
-        "price": 50
+        "description": "服用后可七日不饥，但会使气机收敛，稍减战力。",
+        "price": 50,
+        "effect": {
+            "add_experience": 120,
+            "add_attack": -5,
+            "add_defense": 5
+        }
     },
     "1030": {
         "name": "解毒丹",
         "type": "丹药",
         "rank": "珍品",
-        "description": "解百毒，是探索险地的必备丹药。",
-        "price": 500
+        "description": "解百毒，是探索险地的必备丹药，但药力猛烈，服用后会暂时虚弱。",
+        "price": 500,
+        "effect": {
+            "add_hp": 300,
+            "add_defense": 15,
+            "add_attack": -10,
+            "add_spiritual_power": -30
+        }
+    },
+    "1031": {
+        "name": "清心丹",
+        "type": "丹药",
+        "rank": "珍品",
+        "description": "以幽魂草炼制，可清心凝神，适合闭关前服用，但会削弱肉身力量。",
+        "price": 1200,
+        "effect": {
+            "add_experience": 800,
+            "add_mental_power": 120,
+            "add_spiritual_power": 60,
+            "add_attack": -15
+        }
+    },
+    "1032": {
+        "name": "血煞丹",
+        "type": "丹药",
+        "rank": "珍品",
+        "description": "魔核碎片调和而成，能迅速提升杀伤力，却会侵蚀神魂与防御。",
+        "price": 1800,
+        "effect": {
+            "add_attack": 120,
+            "add_max_hp": 80,
+            "add_defense": -25,
+            "add_mental_power": -40
+        }
+    },
+    "1033": {
+        "name": "焚天逆命丹",
+        "type": "丹药",
+        "rank": "圣品",
+        "description": "以玄冰之核与赤炎晶调和，可强行突破瓶颈，副作用是灼烧经脉。",
+        "price": 120000,
+        "effect": {
+            "add_experience": 60000,
+            "add_max_hp": 400,
+            "add_spiritual_power": 800,
+            "add_breakthrough_bonus": 0.18,
+            "add_hp": -800,
+            "add_gold": -20000
+        }
     },
     "2001": {
         "name": "精铁",
@@ -422,6 +479,27 @@
         "rank": "圣品",
         "description": "妖精在月光下飞舞时洒落的粉尘，拥有奇异的魔力。",
         "price": 7500
+    },
+    "2012": {
+        "name": "龙骨髓",
+        "type": "材料",
+        "rank": "圣品",
+        "description": "远古真龙残骸中提炼的骨髓，是炼制顶级防具的核心材料。",
+        "price": 12000
+    },
+    "2013": {
+        "name": "星辉晶砂",
+        "type": "材料",
+        "rank": "珍品",
+        "description": "由陨星粉碎后凝成的晶砂，可为法器赋予星辰之力。",
+        "price": 4200
+    },
+    "2014": {
+        "name": "忘川花",
+        "type": "材料",
+        "rank": "珍品",
+        "description": "生长于忘川河畔的奇花，既可炼丹也可制毒，药性阴寒。",
+        "price": 3600
     },
     "3001": {
         "name": "青锋剑",

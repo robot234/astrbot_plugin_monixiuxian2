@@ -338,6 +338,14 @@ class CultivationManager:
         next_level_info = self.config_manager.level_data[current_level_index + 1]
         exp_needed = next_level_info['exp_needed']
         success_rate = next_level_info['success_rate']
+        old_base_stats = self._calculate_base_stats(current_level_index)
+        permanent_bonus = {
+            "max_hp": max(0, player.max_hp - old_base_stats.get("max_hp", player.max_hp)),
+            "attack": max(0, player.attack - old_base_stats.get("attack", player.attack)),
+            "defense": max(0, player.defense - old_base_stats.get("defense", player.defense)),
+            "spiritual_power": max(0, player.spiritual_power - old_base_stats.get("spiritual_power", player.spiritual_power)),
+            "mental_power": max(0, player.mental_power - old_base_stats.get("mental_power", player.mental_power)),
+        }
 
         if p_clone.experience < exp_needed:
             msg = (f"突破失败！\n目标境界：{next_level_info['level_name']}\n"
@@ -353,12 +361,12 @@ class CultivationManager:
             p_clone.experience -= exp_needed
 
             new_stats = self._calculate_base_stats(p_clone.level_index)
-            p_clone.hp = new_stats['hp']
-            p_clone.max_hp = new_stats['max_hp']
-            p_clone.attack = new_stats['attack']
-            p_clone.defense = new_stats['defense']
-            p_clone.spiritual_power = new_stats['spiritual_power']
-            p_clone.mental_power = new_stats['mental_power']
+            p_clone.max_hp = new_stats['max_hp'] + permanent_bonus["max_hp"]
+            p_clone.hp = p_clone.max_hp
+            p_clone.attack = new_stats['attack'] + permanent_bonus["attack"]
+            p_clone.defense = new_stats['defense'] + permanent_bonus["defense"]
+            p_clone.spiritual_power = new_stats['spiritual_power'] + permanent_bonus["spiritual_power"]
+            p_clone.mental_power = new_stats['mental_power'] + permanent_bonus["mental_power"]
             
             # 清除突破加成buff
             bonus_used = p_clone.breakthrough_bonus

@@ -3,7 +3,7 @@ import random
 from datetime import datetime
 from typing import Optional, Tuple
 from astrbot.api.event import AstrMessageEvent
-from astrbot.api import AstrBotConfig
+from astrbot.api import AstrBotConfig, logger
 from ..data import DataBase
 from ..config_manager import ConfigManager
 from ..models import Player, PlayerEffect, Item
@@ -134,6 +134,15 @@ class ShopHandler:
                     inventory_dict[item.id] = stock
                 await self.db.init_shop_inventory(today_date, inventory_dict)
                 existing_inventory = inventory_dict
+            else:
+                missing_items = {}
+                for item in daily_items:
+                    if item.id not in existing_inventory:
+                        stock = self._generate_stock_for_item(item.price, rng)
+                        existing_inventory[item.id] = stock
+                        missing_items[item.id] = stock
+                if missing_items:
+                    await self.db.upsert_shop_inventory_items(today_date, missing_items)
             
             sorted_items = sorted(daily_items, key=lambda item: item.price)
 
@@ -223,6 +232,10 @@ class ShopHandler:
             return
         
         target_item_id, target_item_info = item_to_use
+        effect_def = getattr(target_item_info, "effect", None) or {}
+        if effect_def.get("add_breakthrough_bonus") and quantity > 1:
+            yield event.plain_result("突破丹药需逐颗服用，请一次使用 1 颗。")
+            return
         
         # 检查背包数量
         inventory_item = await self.db.get_item_from_inventory(player.user_id, target_item_id)

@@ -317,6 +317,23 @@ class DataBase:
             logger.error(f"初始化商店库存失败: {e}")
             raise
 
+    async def upsert_shop_inventory_items(self, date: str, inventory_dict: Dict[str, int]):
+        """补录指定日期缺失的库存项"""
+        if not inventory_dict:
+            return
+        try:
+            await self.conn.execute("BEGIN")
+            for item_id, stock in inventory_dict.items():
+                await self.conn.execute("""
+                    INSERT INTO shop_inventory (date, item_id, stock) VALUES (?, ?, ?)
+                    ON CONFLICT(date, item_id) DO UPDATE SET stock = excluded.stock
+                """, (date, item_id, stock))
+            await self.conn.commit()
+        except aiosqlite.Error as e:
+            await self.conn.rollback()
+            logger.error(f"补录商店库存失败: {e}")
+            raise
+
     async def get_shop_stock(self, date: str, item_id: str) -> Optional[int]:
         """获取指定日期某个物品的库存数量"""
         async with self.conn.execute(
