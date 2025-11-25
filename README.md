@@ -135,7 +135,6 @@ config/
 
 ---
 
-<<<<<<< HEAD
 ## 🌟 灵根系统
 
 ### 17种灵根类型
@@ -258,6 +257,3 @@ astrbot_plugin_monixiuxian/
 - **GitHub仓库**: https://github.com/linjianyan0229/astrbot_plugin_monixiuxian
 - **AstrBot框架**: https://github.com/Soulter/AstrBot
 - **问题反馈**: https://github.com/linjianyan0229/astrbot_plugin_monixiuxian/issues
-=======
-本插件采用 AGPL-3.0 许可证。
->>>>>>> 52998f97f585a835f6fa7ffc9502e4be888a64f0
