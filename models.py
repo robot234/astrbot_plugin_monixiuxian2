@@ -53,7 +53,7 @@ class Item:
 
 @dataclass
 class Player:
-    """玩家数据模型 - 新属性系统（灵修/体修）+ 装备系统"""
+    """玩家数据模型 - 新属性系统（灵修/体修）+ 装备系统 + 丹药系统"""
 
     user_id: str
     level_index: int = 0
@@ -83,6 +83,13 @@ class Player:
     physical_defense: int = 5  # 物防
     mental_power: int = 100  # 精神力
 
+    # 丹药系统字段
+    active_pill_effects: str = "[]"  # 当前生效的临时丹药效果（JSON字符串）
+    permanent_pill_gains: str = "{}"  # 永久丹药累积增益（JSON字符串）
+    has_resurrection_pill: bool = False  # 是否拥有回生丹效果
+    has_debuff_shield: bool = False  # 是否拥有一次负面效果免疫
+    pills_inventory: str = "{}"  # 丹药背包（JSON字符串，格式：{pill_id: count}）
+
     def get_level(self, config_manager: "ConfigManager") -> str:
         """获取境界名称"""
         if 0 <= self.level_index < len(config_manager.level_data):
@@ -106,11 +113,45 @@ class Player:
         """设置功法列表"""
         self.techniques = json.dumps(techniques_list, ensure_ascii=False)
 
-    def get_total_attributes(self, equipped_items: List[Item]) -> dict:
-        """计算包含装备加成的总属性
+    def get_active_pill_effects(self) -> List[dict]:
+        """获取当前生效的临时丹药效果列表"""
+        try:
+            return json.loads(self.active_pill_effects)
+        except:
+            return []
+
+    def set_active_pill_effects(self, effects: List[dict]):
+        """设置当前生效的临时丹药效果"""
+        self.active_pill_effects = json.dumps(effects, ensure_ascii=False)
+
+    def get_permanent_pill_gains(self) -> dict:
+        """获取永久丹药累积增益"""
+        try:
+            return json.loads(self.permanent_pill_gains)
+        except:
+            return {}
+
+    def set_permanent_pill_gains(self, gains: dict):
+        """设置永久丹药累积增益"""
+        self.permanent_pill_gains = json.dumps(gains, ensure_ascii=False)
+
+    def get_pills_inventory(self) -> dict:
+        """获取丹药背包"""
+        try:
+            return json.loads(self.pills_inventory)
+        except:
+            return {}
+
+    def set_pills_inventory(self, inventory: dict):
+        """设置丹药背包"""
+        self.pills_inventory = json.dumps(inventory, ensure_ascii=False)
+
+    def get_total_attributes(self, equipped_items: List[Item], pill_multipliers: Optional[dict] = None) -> dict:
+        """计算包含装备加成和丹药效果的总属性
 
         Args:
             equipped_items: 已装备的物品列表
+            pill_multipliers: 丹药属性倍率（可选）
 
         Returns:
             包含所有属性的字典
@@ -139,5 +180,12 @@ class Player:
             if item.item_type == "main_technique":
                 total["exp_multiplier"] += item.exp_multiplier
                 total["max_spiritual_qi"] += item.spiritual_qi
+
+        # 应用丹药倍率效果
+        if pill_multipliers:
+            total["physical_damage"] = int(total["physical_damage"] * pill_multipliers.get("physical_damage", 1.0))
+            total["magic_damage"] = int(total["magic_damage"] * pill_multipliers.get("magic_damage", 1.0))
+            total["physical_defense"] = int(total["physical_defense"] * pill_multipliers.get("physical_defense", 1.0))
+            total["magic_defense"] = int(total["magic_defense"] * pill_multipliers.get("magic_defense", 1.0))
 
         return total

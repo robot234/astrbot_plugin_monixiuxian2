@@ -1,6 +1,6 @@
 # core/cultivation_manager.py
 import random
-from typing import Dict
+from typing import Dict, Optional
 
 from astrbot.api import AstrBotConfig, logger
 from ..config_manager import ConfigManager
@@ -323,7 +323,13 @@ class CultivationManager:
         speed = speeds_config.get(config_key, 1.0)
         return speed
 
-    def calculate_cultivation_exp(self, player: Player, minutes: int, technique_bonus: float = 0.0) -> int:
+    def calculate_cultivation_exp(
+        self,
+        player: Player,
+        minutes: int,
+        technique_bonus: float = 0.0,
+        pill_multipliers: Optional[Dict[str, float]] = None
+    ) -> int:
         """计算闭关修炼获得的修为
 
         Args:
@@ -340,8 +346,13 @@ class CultivationManager:
         # 获取灵根速度倍率
         root_speed = self.get_spiritual_root_speed(player)
 
-        # 计算总修为倍率：灵根倍率 * (1 + 心法倍率)
-        total_multiplier = root_speed * (1.0 + technique_bonus)
+        # 获取丹药修炼倍率加成
+        cultivation_pill_bonus = 1.0
+        if pill_multipliers:
+            cultivation_pill_bonus = pill_multipliers.get("cultivation_speed", 1.0)
+
+        # 计算总修为倍率：灵根倍率 * (1 + 心法倍率) * 丹药倍率
+        total_multiplier = root_speed * (1.0 + technique_bonus) * cultivation_pill_bonus
 
         # 计算总修为：基础修为 * 时长 * 总倍率
         total_exp = int(base_exp * minutes * total_multiplier)
@@ -349,7 +360,8 @@ class CultivationManager:
         logger.info(
             f"玩家 {player.user_id} 闭关 {minutes} 分钟，"
             f"基础修为 {base_exp}，灵根倍率 {root_speed}，"
-            f"心法加成 {technique_bonus:.2%}，获得修为 {total_exp}"
+            f"心法加成 {technique_bonus:.2%}，丹药倍率 {cultivation_pill_bonus:.2f}，"
+            f"获得修为 {total_exp}"
         )
         return total_exp
 

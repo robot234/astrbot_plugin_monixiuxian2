@@ -51,7 +51,8 @@ class BreakthroughManager:
     def calculate_breakthrough_success_rate(
         self,
         player: Player,
-        pill_name: Optional[str] = None
+        pill_name: Optional[str] = None,
+        temp_bonus: float = 0.0
     ) -> Tuple[float, str]:
         """计算突破成功率
 
@@ -71,8 +72,11 @@ class BreakthroughManager:
             f"基础成功率：{base_success_rate:.1%}"
         ]
 
-        final_rate = base_success_rate
+        final_rate = base_success_rate + temp_bonus
         max_rate = 1.0  # 默认最大100%
+
+        if temp_bonus:
+            info_lines.append(f"临时丹药加成：{temp_bonus:+.1%}")
 
         # 如果使用了破境丹
         if pill_name:
@@ -82,13 +86,14 @@ class BreakthroughManager:
                 max_rate = pill_data.get("max_success_rate", 1.0)
 
                 # 计算加成后的成功率
-                final_rate = min(base_success_rate + breakthrough_bonus, max_rate)
+                final_rate = min(base_success_rate + temp_bonus + breakthrough_bonus, max_rate)
 
                 info_lines.append(f"破境丹加成：+{breakthrough_bonus:.1%}")
                 info_lines.append(f"最大成功率限制：{max_rate:.1%}")
             else:
                 logger.warning(f"无效的破境丹：{pill_name}")
 
+        final_rate = max(0.0, min(final_rate, max_rate))
         info_lines.append(f"最终成功率：{final_rate:.1%}")
         info = "\n".join(info_lines)
 
@@ -97,7 +102,9 @@ class BreakthroughManager:
     async def execute_breakthrough(
         self,
         player: Player,
-        pill_name: Optional[str] = None
+        pill_name: Optional[str] = None,
+        temp_bonus: float = 0.0,
+        death_rate_multiplier: float = 1.0
     ) -> Tuple[bool, str, bool]:
         """执行突破
 
@@ -114,7 +121,7 @@ class BreakthroughManager:
             return False, error_msg, False
 
         # 计算成功率
-        success_rate, rate_info = self.calculate_breakthrough_success_rate(player, pill_name)
+        success_rate, rate_info = self.calculate_breakthrough_success_rate(player, pill_name, temp_bonus)
 
         # 判定突破结果
         random_value = random.random()
@@ -195,9 +202,40 @@ class BreakthroughManager:
 
             # 随机一个死亡概率
             death_rate = random.uniform(death_probability_range[0], death_probability_range[1])
+            death_rate = max(0.0, min(1.0, death_rate * death_rate_multiplier))
             died = random.random() < death_rate
 
             if died:
+                # 检查是否有回生丹效果
+                from .pill_manager import PillManager
+                pill_manager = PillManager(self.db, self.config_manager)
+                resurrected = await pill_manager.handle_resurrection(player)
+
+                if resurrected:
+                    # 回生丹触发，玩家复活
+                    resurrection_msg = (
+                        f"💀 突破失败，走火入魔！💀\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"{rate_info}\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"你在突破【{next_level_name}】时走火入魔...\n"
+                        f"\n"
+                        f"⚡ 回生丹效果触发！⚡\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"🌟 你涅槃重生了！\n"
+                        f"⚠️ 但所有属性降低到之前的一半\n"
+                        f"💊 回生丹效果已消耗\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"请继续修炼，重回巅峰！"
+                    )
+
+                    logger.info(
+                        f"玩家 {player.user_id} 突破失败触发回生丹，成功复活"
+                    )
+
+                    # 返回False（突破失败），消息，False（未真正死亡）
+                    return False, resurrection_msg, False
+
                 # 玩家死亡 - 删除数据
                 await self.db.delete_player(player.user_id)
 
@@ -208,7 +246,7 @@ class BreakthroughManager:
                     f"━━━━━━━━━━━━━━━\n"
                     f"你在突破【{next_level_name}】时走火入魔，身死道消...\n"
                     f"所有修为和装备化为虚无\n"
-                    f"若想重新修仙，请使用'入仙途'命令重新开始"
+                    f"若想重新修仙，请使用'我要修仙'命令重新开始"
                 )
 
                 logger.info(

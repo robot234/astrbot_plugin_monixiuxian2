@@ -7,7 +7,8 @@
         "price": 50,
         "effect": {
             "add_hp": 100
-        }
+        },
+        "shop_weight": 1000
     },
     "1002": {
         "name": "一品培元丹",
@@ -17,7 +18,8 @@
         "price": 100,
         "effect": {
             "add_experience": 80
-        }
+        },
+        "shop_weight": 1000
     },
     "1003": {
         "name": "一品凝气丹",
@@ -27,7 +29,8 @@
         "price": 150,
         "effect": {
             "add_experience": 120
-        }
+        },
+        "shop_weight": 1000
     },
     "1004": {
         "name": "二品回春丹",
@@ -37,7 +40,8 @@
         "price": 200,
         "effect": {
             "add_hp": 250
-        }
+        },
+        "shop_weight": 1000
     },
     "1005": {
         "name": "二品引气丹",
@@ -47,7 +51,8 @@
         "price": 300,
         "effect": {
             "add_experience": 200
-        }
+        },
+        "shop_weight": 1000
     },
     "1006": {
         "name": "二品壮元丹",
@@ -57,7 +62,8 @@
         "price": 400,
         "effect": {
             "add_experience": 300
-        }
+        },
+        "shop_weight": 1000
     },
     "1007": {
         "name": "三品回元丹",
@@ -68,7 +74,8 @@
         "effect": {
             "add_hp": 500,
             "add_max_hp": 10
-        }
+        },
+        "shop_weight": 100
     },
     "1008": {
         "name": "三品聚灵丹",
@@ -79,7 +86,8 @@
         "effect": {
             "add_experience": 600,
             "add_spiritual_power": 20
-        }
+        },
+        "shop_weight": 100
     },
     "1009": {
         "name": "三品筑基丹",
@@ -92,7 +100,8 @@
             "add_spiritual_power": 30,
             "add_mental_power": 30,
             "add_breakthrough_bonus": 0.1
-        }
+        },
+        "shop_weight": 100
     },
     "1010": {
         "name": "四品玉髓丹",
@@ -104,7 +113,8 @@
             "add_hp": 1000,
             "add_max_hp": 25,
             "add_defense": 5
-        }
+        },
+        "shop_weight": 100
     },
     "1011": {
         "name": "四品化灵丹",
@@ -116,7 +126,8 @@
             "add_experience": 1500,
             "add_spiritual_power": 50,
             "add_mental_power": 30
-        }
+        },
+        "shop_weight": 100
     },
     "1012": {
         "name": "四品破境丹",
@@ -131,7 +142,8 @@
             "add_attack": 10,
             "add_defense": 8,
             "add_breakthrough_bonus": 0.15
-        }
+        },
+        "shop_weight": 100
     },
     "1013": {
         "name": "五品紫金丹",
@@ -144,7 +156,8 @@
             "add_max_hp": 100,
             "add_defense": 25,
             "add_spiritual_power": 80
-        }
+        },
+        "shop_weight": 100
     },
     "1014": {
         "name": "五品凝神丹",
@@ -157,7 +170,8 @@
             "add_spiritual_power": 150,
             "add_mental_power": 200,
             "add_attack": 30
-        }
+        },
+        "shop_weight": 100
     },
     "1015": {
         "name": "五品渡劫丹",
@@ -172,7 +186,8 @@
             "add_attack": 40,
             "add_defense": 40,
             "add_breakthrough_bonus": 0.2
-        }
+        },
+        "shop_weight": 100
     },
     "1016": {
         "name": "六品造化丹",
@@ -186,7 +201,8 @@
             "add_defense": 60,
             "add_spiritual_power": 180,
             "add_mental_power": 120
-        }
+        },
+        "shop_weight": 100
     },
     "1017": {
         "name": "六品天元丹",
@@ -200,7 +216,8 @@
             "add_mental_power": 300,
             "add_attack": 80,
             "add_max_hp": 250
-        }
+        },
+        "shop_weight": 100
     },
     "1018": {
         "name": "六品破婴丹",
@@ -215,7 +232,8 @@
             "add_attack": 100,
             "add_defense": 100,
             "add_breakthrough_bonus": 0.25
-        }
+        },
+        "shop_weight": 100
     },
     "1019": {
         "name": "七品太乙丹",
@@ -226,7 +244,8 @@
         "effect": {
             "add_hp": 15000,
             "add_max_hp": 2000
-        }
+        },
+        "shop_weight": 20
     },
     "1020": {
         "name": "七品金髓丹",
@@ -237,7 +256,8 @@
         "effect": {
             "add_experience": 40000,
             "add_attack": 800
-        }
+        },
+        "shop_weight": 20
     },
     "1021": {
         "name": "七品化神丹",
@@ -248,7 +268,8 @@
         "effect": {
             "add_spiritual_power": 3000,
             "add_breakthrough_bonus": 0.3
-        }
+        },
+        "shop_weight": 20
     },
     "1022": {
         "name": "八品九转丹",
@@ -259,7 +280,8 @@
         "effect": {
             "add_hp": 35000,
             "add_defense": 1500
-        }
+        },
+        "shop_weight": 20
     },
     "1023": {
         "name": "八品道元丹",
@@ -270,7 +292,8 @@
         "effect": {
             "add_experience": 100000,
             "add_mental_power": 5000
-        }
+        },
+        "shop_weight": 20
     },
     "1024": {
         "name": "八品破虚丹",
@@ -285,7 +308,8 @@
             "add_attack": 1000,
             "add_defense": 1000,
             "add_breakthrough_bonus": 0.35
-        }
+        },
+        "shop_weight": 20
     },
     "1025": {
         "name": "九品还魂丹",
@@ -296,7 +320,8 @@
         "effect": {
             "add_hp": 99999,
             "add_max_hp": 5000
-        }
+        },
+        "shop_weight": 100
     },
     "1026": {
         "name": "九品成圣丹",
@@ -308,7 +333,8 @@
             "add_experience": 300000,
             "add_spiritual_power": 10000,
             "add_mental_power": 10000
-        }
+        },
+        "shop_weight": 100
     },
     "1027": {
         "name": "九品破劫丹",
@@ -323,7 +349,8 @@
             "add_attack": 2000,
             "add_defense": 2000,
             "add_breakthrough_bonus": 0.5
-        }
+        },
+        "shop_weight": 100
     },
     "1028": {
         "name": "大力丸",
@@ -335,7 +362,8 @@
             "add_attack": 25,
             "add_defense": -10,
             "add_hp": -50
-        }
+        },
+        "shop_weight": 1000
     },
     "1029": {
         "name": "辟谷丹",
@@ -347,7 +375,8 @@
             "add_experience": 120,
             "add_attack": -5,
             "add_defense": 5
-        }
+        },
+        "shop_weight": 1000
     },
     "1030": {
         "name": "解毒丹",
@@ -360,7 +389,8 @@
             "add_defense": 15,
             "add_attack": -10,
             "add_spiritual_power": -30
-        }
+        },
+        "shop_weight": 100
     },
     "1031": {
         "name": "清心丹",
@@ -373,7 +403,8 @@
             "add_mental_power": 120,
             "add_spiritual_power": 60,
             "add_attack": -15
-        }
+        },
+        "shop_weight": 100
     },
     "1032": {
         "name": "血煞丹",
@@ -386,7 +417,8 @@
             "add_max_hp": 80,
             "add_defense": -25,
             "add_mental_power": -40
-        }
+        },
+        "shop_weight": 100
     },
     "1033": {
         "name": "焚天逆命丹",
@@ -401,105 +433,120 @@
             "add_breakthrough_bonus": 0.18,
             "add_hp": -800,
             "add_gold": -20000
-        }
+        },
+        "shop_weight": 100
     },
     "2001": {
         "name": "精铁",
         "type": "材料",
         "rank": "凡品",
         "description": "基础的炼器材料。",
-        "price": 100
+        "price": 100,
+        "shop_weight": 1000
     },
     "2002": {
         "name": "百年灵草",
         "type": "材料",
         "rank": "凡品",
         "description": "蕴含天地灵气的草药，是炼制高级丹药的主材。",
-        "price": 500
+        "price": 500,
+        "shop_weight": 1000
     },
     "2003": {
         "name": "紫金沙",
         "type": "材料",
         "rank": "珍品",
         "description": "炼制高级法器的稀有矿石。",
-        "price": 1500
+        "price": 1500,
+        "shop_weight": 100
     },
     "2004": {
         "name": "千年人参",
         "type": "材料",
         "rank": "珍品",
         "description": "炼制高阶丹药的灵物，蕴含庞大的生命精气。",
-        "price": 3000
+        "price": 3000,
+        "shop_weight": 100
     },
     "2005": {
         "name": "魔核碎片",
         "type": "材料",
         "rank": "珍品",
         "description": "魔族生物的力量核心，散发着不祥的气息。",
-        "price": 1200
+        "price": 1200,
+        "shop_weight": 100
     },
     "2006": {
         "name": "幽魂草",
         "type": "材料",
         "rank": "珍品",
         "description": "生长于极阴之地，是炼制与神魂相关丹药的材料。",
-        "price": 1100
+        "price": 1100,
+        "shop_weight": 100
     },
     "2007": {
         "name": "赤炎石",
         "type": "材料",
         "rank": "珍品",
         "description": "蕴含火系灵力的矿石，是炼制火属性法器的关键。",
-        "price": 1800
+        "price": 1800,
+        "shop_weight": 100
     },
     "2008": {
         "name": "亡者之息",
         "type": "材料",
         "rank": "珍品",
         "description": "不死生物消散后留下的精华，充满了死亡的能量。",
-        "price": 1300
+        "price": 1300,
+        "shop_weight": 100
     },
     "2009": {
         "name": "精密齿轮",
         "type": "材料",
         "rank": "珍品",
         "description": "驱动机械造物的核心部件，结构复杂。",
-        "price": 2200
+        "price": 2200,
+        "shop_weight": 100
     },
     "2010": {
         "name": "玄冰之核",
         "type": "材料",
         "rank": "圣品",
         "description": "万年玄冰中诞生的灵物，蕴含极致的寒冰之力。",
-        "price": 8000
+        "price": 8000,
+        "shop_weight": 100
     },
     "2011": {
         "name": "月光粉尘",
         "type": "材料",
         "rank": "圣品",
         "description": "妖精在月光下飞舞时洒落的粉尘，拥有奇异的魔力。",
-        "price": 7500
+        "price": 7500,
+        "shop_weight": 100
     },
     "2012": {
         "name": "龙骨髓",
         "type": "材料",
         "rank": "圣品",
         "description": "远古真龙残骸中提炼的骨髓，是炼制顶级防具的核心材料。",
-        "price": 12000
+        "price": 12000,
+        "shop_weight": 100
     },
     "2013": {
         "name": "星辉晶砂",
         "type": "材料",
         "rank": "珍品",
         "description": "由陨星粉碎后凝成的晶砂，可为法器赋予星辰之力。",
-        "price": 4200
+        "price": 4200,
+        "shop_weight": 100
     },
     "2014": {
         "name": "忘川花",
         "type": "材料",
         "rank": "珍品",
         "description": "生长于忘川河畔的奇花，既可炼丹也可制毒，药性阴寒。",
-        "price": 3600
+        "price": 3600,
+        "shop_weight": 100
     },
     "3001": {
         "name": "青锋剑",
@@ -510,7 +557,8 @@
         "price": 800,
         "equip_effects": {
             "attack": 8
-        }
+        },
+        "shop_weight": 1000
     },
     "3002": {
         "name": "玄铁甲",
@@ -521,7 +569,8 @@
         "price": 800,
         "equip_effects": {
             "defense": 10
-        }
+        },
+        "shop_weight": 1000
     },
     "3003": {
         "name": "烈阳刀",
@@ -532,7 +581,8 @@
         "price": 4000,
         "equip_effects": {
             "attack": 25
-        }
+        },
+        "shop_weight": 100
     },
     "3004": {
         "name": "月华袍",
@@ -544,7 +594,8 @@
         "equip_effects": {
             "defense": 22,
             "max_hp": 50
-        }
+        },
+        "shop_weight": 100
     },
     "3005": {
         "name": "弑神枪",
@@ -555,7 +606,8 @@
         "price": 9999999,
         "equip_effects": {
             "attack": 500
-        }
+        },
+        "shop_weight": 20
     },
     "3006": {
         "name": "镇魂幡",
@@ -567,7 +619,8 @@
         "equip_effects": {
             "attack": 100,
             "defense": 50
-        }
+        },
+        "shop_weight": 100
     },
     "3007": {
         "name": "寒霜剑",
@@ -578,7 +631,8 @@
         "price": 600000,
         "equip_effects": {
             "attack": 250
-        }
+        },
+        "shop_weight": 100
     },
     "3008": {
         "name": "泰坦之铠",
@@ -590,7 +644,8 @@
         "equip_effects": {
             "defense": 300,
             "max_hp": 200
-        }
+        },
+        "shop_weight": 100
     },
     "3009": {
         "name": "妖精之弓",
@@ -601,7 +656,8 @@
         "price": 550000,
         "equip_effects": {
             "attack": 220
-        }
+        },
+        "shop_weight": 100
     },
     "3010": {
         "name": "戮仙剑阵",
@@ -613,76 +669,87 @@
         "equip_effects": {
             "attack": 800,
             "defense": 200
-        }
+        },
+        "shop_weight": 20
     },
     "4001": {
         "name": "长春功残篇",
         "type": "功法",
         "rank": "凡品",
         "description": "一部基础的吐纳法门，修炼后可延年益寿。",
-        "price": 1000
+        "price": 1000,
+        "shop_weight": 1000
     },
     "4002": {
         "name": "焚天诀上卷",
         "type": "功法",
         "rank": "圣品",
         "description": "传说中可焚尽万物的无上功法，此为上卷。",
-        "price": 888888
+        "price": 888888,
+        "shop_weight": 100
     },
     "4003": {
         "name": "他化自在大法",
         "type": "功法",
         "rank": "帝品",
         "description": "无上秘法，可演化万物，神秘莫测。",
-        "price": 9999999
+        "price": 9999999,
+        "shop_weight": 20
     },
     "4004": {
         "name": "不动明王经",
         "type": "功法",
         "rank": "珍品",
         "description": "佛门无上炼体功法，修炼后肉身坚不可摧。",
-        "price": 10000
+        "price": 10000,
+        "shop_weight": 100
     },
     "4005": {
         "name": "御风诀",
         "type": "功法",
         "rank": "凡品",
         "description": "修炼后身轻如燕，提升移动速度（暂无实际效果）。",
-        "price": 1200
+        "price": 1200,
+        "shop_weight": 1000
     },
     "4006": {
         "name": "龟息功",
         "type": "功法",
         "rank": "凡品",
         "description": "模拟玄龟呼吸，修炼后气息绵长，提升耐力（暂无实际效果）。",
-        "price": 900
+        "price": 900,
+        "shop_weight": 1000
     },
     "4007": {
         "name": "北冥神功",
         "type": "功法",
         "rank": "珍品",
         "description": "能吸取他人修为化为己用，霸道无比（暂无实际效果）。",
-        "price": 25000
+        "price": 25000,
+        "shop_weight": 100
     },
     "4008": {
         "name": "九阳神功",
         "type": "功法",
         "rank": "珍品",
         "description": "至刚至阳的内功心法，百毒不侵。",
-        "price": 22000
+        "price": 22000,
+        "shop_weight": 100
     },
     "4009": {
         "name": "道经",
         "type": "功法",
         "rank": "帝品",
         "description": "阐述了天地至理的无上经文，为万法之源。",
-        "price": 7777777
+        "price": 7777777,
+        "shop_weight": 20
     },
     "4010": {
         "name": "吞天魔功",
         "type": "功法",
         "rank": "帝品",
         "description": "魔道无上功法，吞噬万物本源，禁忌的存在。",
-        "price": 6666666
+        "price": 6666666,
+        "shop_weight": 20
     }
 }

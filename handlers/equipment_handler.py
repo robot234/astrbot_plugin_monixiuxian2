@@ -2,7 +2,7 @@
 
 from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
-from ..core import EquipmentManager
+from ..core import EquipmentManager, PillManager
 from ..config_manager import ConfigManager
 from ..models import Player
 from .utils import player_required
@@ -20,6 +20,7 @@ class EquipmentHandler:
         self.db = db
         self.config_manager = config_manager
         self.equipment_manager = EquipmentManager(db)
+        self.pill_manager = PillManager(db, config_manager)
 
     @player_required
     async def handle_show_equipment(self, player: Player, event: AstrMessageEvent):
@@ -32,6 +33,9 @@ class EquipmentHandler:
             self.config_manager.items_data,
             self.config_manager.weapons_data
         )
+
+        await self.pill_manager.update_temporary_effects(player)
+        pill_multipliers = self.pill_manager.calculate_pill_attribute_effects(player)
 
         # 构建装备显示
         equipment_lines = [
@@ -53,7 +57,7 @@ class EquipmentHandler:
         # 总属性加成
         if equipped_items:
             equipment_lines.append("\n--- 装备属性加成 ---\n")
-            total_attrs = player.get_total_attributes(equipped_items)
+            total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
 
             # 计算加成值（总属性 - 基础属性）
             magic_damage_bonus = total_attrs["magic_damage"] - player.magic_damage

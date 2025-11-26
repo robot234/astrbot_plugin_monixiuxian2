@@ -10,7 +10,9 @@
     "magic_damage": 5,
     "physical_damage": 10,
     "physical_defense": 3,
-    "mental_power": 5
+    "mental_power": 5,
+    "price": 199,
+    "shop_weight": 1000
   },
   {
     "id": "sword_002",
@@ -23,7 +25,9 @@
     "magic_damage": 8,
     "physical_damage": 15,
     "physical_defense": 5,
-    "mental_power": 8
+    "mental_power": 8,
+    "price": 310,
+    "shop_weight": 1000
   },
   {
     "id": "sword_003",
@@ -36,7 +40,9 @@
     "magic_damage": 30,
     "physical_damage": 40,
     "physical_defense": 15,
-    "mental_power": 25
+    "mental_power": 25,
+    "price": 5670,
+    "shop_weight": 200
   },
   {
     "id": "sword_004",
@@ -49,7 +55,9 @@
     "magic_damage": 35,
     "physical_damage": 35,
     "physical_defense": 12,
-    "mental_power": 30
+    "mental_power": 30,
+    "price": 5676,
+    "shop_weight": 200
   },
   {
     "id": "sword_005",
@@ -62,7 +70,9 @@
     "magic_damage": 80,
     "physical_damage": 70,
     "physical_defense": 30,
-    "mental_power": 60
+    "mental_power": 60,
+    "price": 14280,
+    "shop_weight": 80
   },
   {
     "id": "sword_006",
@@ -75,7 +85,9 @@
     "magic_damage": 150,
     "physical_damage": 130,
     "physical_defense": 60,
-    "mental_power": 120
+    "mental_power": 120,
+    "price": 29100,
+    "shop_weight": 30
   },
   {
     "id": "sword_007",
@@ -88,7 +100,9 @@
     "magic_damage": 300,
     "physical_damage": 260,
     "physical_defense": 120,
-    "mental_power": 250
+    "mental_power": 250,
+    "price": 70290,
+    "shop_weight": 10
   },
   {
     "id": "sword_008",
@@ -101,7 +115,9 @@
     "magic_damage": 600,
     "physical_damage": 550,
     "physical_defense": 250,
-    "mental_power": 500
+    "mental_power": 500,
+    "price": 192000,
+    "shop_weight": 3
   },
   {
     "id": "sword_009",
@@ -114,7 +130,9 @@
     "magic_damage": 1200,
     "physical_damage": 1100,
     "physical_defense": 500,
-    "mental_power": 1000
+    "mental_power": 1000,
+    "price": 480000,
+    "shop_weight": 1
   },
   {
     "id": "sword_010",
@@ -127,7 +145,9 @@
     "magic_damage": 2500,
     "physical_damage": 2300,
     "physical_defense": 1000,
-    "mental_power": 2000
+    "mental_power": 2000,
+    "price": 1122000,
+    "shop_weight": 0.3
   },
   {
     "id": "sword_011",
@@ -140,7 +160,9 @@
     "magic_damage": 5000,
     "physical_damage": 4800,
     "physical_defense": 2000,
-    "mental_power": 4000
+    "mental_power": 4000,
+    "price": 2479000,
+    "shop_weight": 0.1
   },
   {
     "id": "sword_012",
@@ -153,7 +175,9 @@
     "magic_damage": 5500,
     "physical_damage": 5000,
     "physical_defense": 2200,
-    "mental_power": 4500
+    "mental_power": 4500,
+    "price": 2684350,
+    "shop_weight": 0.1
   },
   {
     "id": "blade_001",
@@ -166,7 +190,9 @@
     "magic_damage": 3,
     "physical_damage": 15,
     "physical_defense": 5,
-    "mental_power": 3
+    "mental_power": 3,
+    "price": 235,
+    "shop_weight": 1000
   },
   {
     "id": "blade_002",
@@ -179,7 +205,9 @@
     "magic_damage": 5,
     "physical_damage": 20,
     "physical_defense": 8,
-    "mental_power": 5
+    "mental_power": 5,
+    "price": 339,
+    "shop_weight": 1000
   },
   {
     "id": "blade_003",
@@ -192,7 +220,9 @@
     "magic_damage": 25,
     "physical_damage": 50,
     "physical_defense": 20,
-    "mental_power": 20
+    "mental_power": 20,
+    "price": 6060,
+    "shop_weight": 200
   },
   {
     "id": "blade_004",
@@ -205,7 +235,9 @@
     "magic_damage": 30,
     "physical_damage": 45,
     "physical_defense": 18,
-    "mental_power": 25
+    "mental_power": 25,
+    "price": 6114,
+    "shop_weight": 200
   },
   {
     "id": "blade_005",
@@ -218,7 +250,9 @@
     "magic_damage": 70,
     "physical_damage": 90,
     "physical_defense": 40,
-    "mental_power": 50
+    "mental_power": 50,
+    "price": 15190,
+    "shop_weight": 80
   },
   {
     "id": "blade_006",
@@ -231,7 +265,9 @@
     "magic_damage": 130,
     "physical_damage": 170,
     "physical_defense": 80,
-    "mental_power": 100
+    "mental_power": 100,
+    "price": 31050,
+    "shop_weight": 30
   },
   {
     "id": "blade_007",
@@ -244,7 +280,9 @@
     "magic_damage": 260,
     "physical_damage": 340,
     "physical_defense": 160,
-    "mental_power": 200
+    "mental_power": 200,
+    "price": 74520,
+    "shop_weight": 10
   },
   {
     "id": "blade_008",
@@ -257,7 +295,9 @@
     "magic_damage": 550,
     "physical_damage": 700,
     "physical_defense": 320,
-    "mental_power": 400
+    "mental_power": 400,
+    "price": 204720,
+    "shop_weight": 3
   },
   {
     "id": "blade_009",
@@ -270,7 +310,9 @@
     "magic_damage": 1100,
     "physical_damage": 1400,
     "physical_defense": 650,
-    "mental_power": 800
+    "mental_power": 800,
+    "price": 513000,
+    "shop_weight": 1
   },
   {
     "id": "blade_010",
@@ -283,7 +325,9 @@
     "magic_damage": 2300,
     "physical_damage": 2900,
     "physical_defense": 1300,
-    "mental_power": 1600
+    "mental_power": 1600,
+    "price": 1196800,
+    "shop_weight": 0.3
   },
   {
     "id": "blade_011",
@@ -296,7 +340,9 @@
     "magic_damage": 4800,
     "physical_damage": 6000,
     "physical_defense": 2600,
-    "mental_power": 3200
+    "mental_power": 3200,
+    "price": 2678800,
+    "shop_weight": 0.1
   },
   {
     "id": "blade_012",
@@ -309,7 +355,9 @@
     "magic_damage": 5000,
     "physical_damage": 6500,
     "physical_defense": 2800,
-    "mental_power": 3500
+    "mental_power": 3500,
+    "price": 2865650,
+    "shop_weight": 0.1
   },
   {
     "id": "broadsword_001",
@@ -322,7 +370,9 @@
     "magic_damage": 2,
     "physical_damage": 20,
     "physical_defense": 8,
-    "mental_power": 2
+    "mental_power": 2,
+    "price": 294,
+    "shop_weight": 1000
   },
   {
     "id": "broadsword_002",
@@ -335,7 +385,9 @@
     "magic_damage": 3,
     "physical_damage": 25,
     "physical_defense": 12,
-    "mental_power": 3
+    "mental_power": 3,
+    "price": 391,
+    "shop_weight": 1000
   },
   {
     "id": "broadsword_003",
@@ -348,7 +400,9 @@
     "magic_damage": 20,
     "physical_damage": 60,
     "physical_defense": 30,
-    "mental_power": 15
+    "mental_power": 15,
+    "price": 6690,
+    "shop_weight": 200
   },
   {
     "id": "broadsword_004",
@@ -361,7 +415,9 @@
     "magic_damage": 22,
     "physical_damage": 65,
     "physical_defense": 35,
-    "mental_power": 18
+    "mental_power": 18,
+    "price": 7440,
+    "shop_weight": 200
   },
   {
     "id": "broadsword_005",
@@ -374,7 +430,9 @@
     "magic_damage": 60,
     "physical_damage": 110,
     "physical_defense": 70,
-    "mental_power": 40
+    "mental_power": 40,
+    "price": 17220,
+    "shop_weight": 80
   },
   {
     "id": "broadsword_006",
@@ -387,7 +445,9 @@
     "magic_damage": 120,
     "physical_damage": 200,
     "physical_defense": 140,
-    "mental_power": 80
+    "mental_power": 80,
+    "price": 35400,
+    "shop_weight": 30
   },
   {
     "id": "broadsword_007",
@@ -400,7 +460,9 @@
     "magic_damage": 240,
     "physical_damage": 400,
     "physical_defense": 280,
-    "mental_power": 160
+    "mental_power": 160,
+    "price": 84960,
+    "shop_weight": 10
   },
   {
     "id": "broadsword_008",
@@ -413,7 +475,9 @@
     "magic_damage": 500,
     "physical_damage": 850,
     "physical_defense": 580,
-    "mental_power": 320
+    "mental_power": 320,
+    "price": 236880,
+    "shop_weight": 3
   },
   {
     "id": "broadsword_009",
@@ -426,7 +490,9 @@
     "magic_damage": 1000,
     "physical_damage": 1700,
     "physical_defense": 1160,
-    "mental_power": 640
+    "mental_power": 640,
+    "price": 592200,
+    "shop_weight": 1
   },
   {
     "id": "broadsword_010",
@@ -439,7 +505,9 @@
     "magic_damage": 2100,
     "physical_damage": 3500,
     "physical_defense": 2400,
-    "mental_power": 1300
+    "mental_power": 1300,
+    "price": 1388900,
+    "shop_weight": 0.3
   },
   {
     "id": "broadsword_011",
@@ -452,7 +520,9 @@
     "magic_damage": 4500,
     "physical_damage": 7500,
     "physical_defense": 5000,
-    "mental_power": 2700
+    "mental_power": 2700,
+    "price": 3209750,
+    "shop_weight": 0.1
   },
   {
     "id": "broadsword_012",
@@ -465,7 +535,9 @@
     "magic_damage": 4700,
     "physical_damage": 8000,
     "physical_defense": 5400,
-    "mental_power": 3000
+    "mental_power": 3000,
+    "price": 3426200,
+    "shop_weight": 0.1
   },
   {
     "id": "qin_001",
@@ -478,7 +550,9 @@
     "magic_damage": 12,
     "physical_damage": 3,
     "magic_defense": 5,
-    "mental_power": 10
+    "mental_power": 10,
+    "price": 240,
+    "shop_weight": 1000
   },
   {
     "id": "qin_002",
@@ -491,7 +565,9 @@
     "magic_damage": 18,
     "physical_damage": 5,
     "magic_defense": 8,
-    "mental_power": 15
+    "mental_power": 15,
+    "price": 369,
+    "shop_weight": 1000
   },
   {
     "id": "qin_003",
@@ -504,7 +580,9 @@
     "magic_damage": 45,
     "physical_damage": 10,
     "magic_defense": 25,
-    "mental_power": 40
+    "mental_power": 40,
+    "price": 5700,
+    "shop_weight": 200
   },
   {
     "id": "qin_004",
@@ -517,7 +595,9 @@
     "magic_damage": 50,
     "physical_damage": 12,
     "magic_defense": 28,
-    "mental_power": 45
+    "mental_power": 45,
+    "price": 6414,
+    "shop_weight": 200
   },
   {
     "id": "qin_005",
@@ -530,7 +610,9 @@
     "magic_damage": 95,
     "physical_damage": 25,
     "magic_defense": 60,
-    "mental_power": 85
+    "mental_power": 85,
+    "price": 14735,
+    "shop_weight": 80
   },
   {
     "id": "qin_006",
@@ -543,7 +625,9 @@
     "magic_damage": 180,
     "physical_damage": 50,
     "magic_defense": 120,
-    "mental_power": 170
+    "mental_power": 170,
+    "price": 30825,
+    "shop_weight": 30
   },
   {
     "id": "qin_007",
@@ -556,7 +640,9 @@
     "magic_damage": 360,
     "physical_damage": 100,
     "magic_defense": 240,
-    "mental_power": 340
+    "mental_power": 340,
+    "price": 73980,
+    "shop_weight": 10
   },
   {
     "id": "qin_008",
@@ -569,7 +655,9 @@
     "magic_damage": 720,
     "physical_damage": 200,
     "magic_defense": 480,
-    "mental_power": 680
+    "mental_power": 680,
+    "price": 197280,
+    "shop_weight": 3
   },
   {
     "id": "qin_009",
@@ -582,7 +670,9 @@
     "magic_damage": 1440,
     "physical_damage": 400,
     "magic_defense": 960,
-    "mental_power": 1360
+    "mental_power": 1360,
+    "price": 493200,
+    "shop_weight": 1
   },
   {
     "id": "qin_010",
@@ -595,7 +685,9 @@
     "magic_damage": 3000,
     "physical_damage": 850,
     "magic_defense": 2000,
-    "mental_power": 2800
+    "mental_power": 2800,
+    "price": 1164500,
+    "shop_weight": 0.3
   },
   {
     "id": "qin_011",
@@ -608,7 +700,9 @@
     "magic_damage": 6200,
     "physical_damage": 1800,
     "magic_defense": 4200,
-    "mental_power": 5800
+    "mental_power": 5800,
+    "price": 2638100,
+    "shop_weight": 0.1
   },
   {
     "id": "qin_012",
@@ -621,7 +715,9 @@
     "magic_damage": 6500,
     "physical_damage": 2000,
     "magic_defense": 4500,
-    "mental_power": 6200
+    "mental_power": 6200,
+    "price": 2812000,
+    "shop_weight": 0.1
   },
   {
     "id": "dagger_001",
@@ -634,7 +730,9 @@
     "magic_damage": 8,
     "physical_damage": 18,
     "physical_defense": 2,
-    "mental_power": 12
+    "mental_power": 12,
+    "price": 336,
+    "shop_weight": 1000
   },
   {
     "id": "dagger_002",
@@ -647,7 +745,9 @@
     "magic_damage": 12,
     "physical_damage": 22,
     "physical_defense": 3,
-    "mental_power": 18
+    "mental_power": 18,
+    "price": 454,
+    "shop_weight": 1000
   },
   {
     "id": "dagger_003",
@@ -660,7 +760,9 @@
     "magic_damage": 40,
     "physical_damage": 55,
     "physical_defense": 10,
-    "mental_power": 45
+    "mental_power": 45,
+    "price": 7530,
+    "shop_weight": 200
   },
   {
     "id": "dagger_004",
@@ -673,7 +775,9 @@
     "magic_damage": 45,
     "physical_damage": 50,
     "physical_defense": 12,
-    "mental_power": 50
+    "mental_power": 50,
+    "price": 7776,
+    "shop_weight": 200
   },
   {
     "id": "dagger_005",
@@ -686,7 +790,9 @@
     "magic_damage": 85,
     "physical_damage": 100,
     "physical_defense": 25,
-    "mental_power": 95
+    "mental_power": 95,
+    "price": 17675,
+    "shop_weight": 80
   },
   {
     "id": "dagger_006",
@@ -699,7 +805,9 @@
     "magic_damage": 170,
     "physical_damage": 190,
     "physical_defense": 50,
-    "mental_power": 180
+    "mental_power": 180,
+    "price": 36750,
+    "shop_weight": 30
   },
   {
     "id": "dagger_007",
@@ -712,7 +820,9 @@
     "magic_damage": 340,
     "physical_damage": 380,
     "physical_defense": 100,
-    "mental_power": 360
+    "mental_power": 360,
+    "price": 88200,
+    "shop_weight": 10
   },
   {
     "id": "dagger_008",
@@ -725,7 +835,9 @@
     "magic_damage": 680,
     "physical_damage": 760,
     "physical_defense": 200,
-    "mental_power": 720
+    "mental_power": 720,
+    "price": 235200,
+    "shop_weight": 3
   },
   {
     "id": "dagger_009",
@@ -738,7 +850,9 @@
     "magic_damage": 1360,
     "physical_damage": 1520,
     "physical_defense": 400,
-    "mental_power": 1440
+    "mental_power": 1440,
+    "price": 588000,
+    "shop_weight": 1
   },
   {
     "id": "dagger_010",
@@ -751,7 +865,9 @@
     "magic_damage": 2800,
     "physical_damage": 3100,
     "physical_defense": 850,
-    "mental_power": 2900
+    "mental_power": 2900,
+    "price": 1365100,
+    "shop_weight": 0.3
   },
   {
     "id": "dagger_011",
@@ -764,7 +880,9 @@
     "magic_damage": 5800,
     "physical_damage": 6400,
     "physical_defense": 1800,
-    "mental_power": 6000
+    "mental_power": 6000,
+    "price": 3078400,
+    "shop_weight": 0.1
   },
   {
     "id": "dagger_012",
@@ -777,7 +895,9 @@
     "magic_damage": 6000,
     "physical_damage": 6800,
     "physical_defense": 2000,
-    "mental_power": 6400
+    "mental_power": 6400,
+    "price": 3256000,
+    "shop_weight": 0.1
   },
   {
     "id": "talisman_001",
@@ -790,7 +910,9 @@
     "magic_damage": 15,
     "physical_damage": 2,
     "magic_defense": 8,
-    "mental_power": 8
+    "mental_power": 8,
+    "price": 274,
+    "shop_weight": 1000
   },
   {
     "id": "talisman_002",
@@ -803,7 +925,9 @@
     "magic_damage": 20,
     "physical_damage": 3,
     "magic_defense": 12,
-    "mental_power": 12
+    "mental_power": 12,
+    "price": 386,
+    "shop_weight": 1000
   },
   {
     "id": "talisman_003",
@@ -816,7 +940,9 @@
     "magic_damage": 55,
     "physical_damage": 8,
     "magic_defense": 35,
-    "mental_power": 35
+    "mental_power": 35,
+    "price": 6510,
+    "shop_weight": 200
   },
   {
     "id": "talisman_004",
@@ -829,7 +955,9 @@
     "magic_damage": 60,
     "physical_damage": 10,
     "magic_defense": 38,
-    "mental_power": 38
+    "mental_power": 38,
+    "price": 7164,
+    "shop_weight": 200
   },
   {
     "id": "talisman_005",
@@ -842,7 +970,9 @@
     "magic_damage": 105,
     "physical_damage": 20,
     "magic_defense": 75,
-    "mental_power": 75
+    "mental_power": 75,
+    "price": 15575,
+    "shop_weight": 80
   },
   {
     "id": "talisman_006",
@@ -855,7 +985,9 @@
     "magic_damage": 200,
     "physical_damage": 40,
     "magic_defense": 150,
-    "mental_power": 150
+    "mental_power": 150,
+    "price": 32625,
+    "shop_weight": 30
   },
   {
     "id": "talisman_007",
@@ -868,7 +1000,9 @@
     "magic_damage": 400,
     "physical_damage": 80,
     "magic_defense": 300,
-    "mental_power": 300
+    "mental_power": 300,
+    "price": 78300,
+    "shop_weight": 10
   },
   {
     "id": "talisman_008",
@@ -881,7 +1015,9 @@
     "magic_damage": 800,
     "physical_damage": 160,
     "magic_defense": 600,
-    "mental_power": 600
+    "mental_power": 600,
+    "price": 208800,
+    "shop_weight": 3
   },
   {
     "id": "talisman_009",
@@ -894,7 +1030,9 @@
     "magic_damage": 1600,
     "physical_damage": 320,
     "magic_defense": 1200,
-    "mental_power": 1200
+    "mental_power": 1200,
+    "price": 522000,
+    "shop_weight": 1
   },
   {
     "id": "talisman_010",
@@ -907,7 +1045,9 @@
     "magic_damage": 3300,
     "physical_damage": 680,
     "magic_defense": 2500,
-    "mental_power": 2500
+    "mental_power": 2500,
+    "price": 1229100,
+    "shop_weight": 0.3
   },
   {
     "id": "talisman_011",
@@ -920,7 +1060,9 @@
     "magic_damage": 6800,
     "physical_damage": 1400,
     "magic_defense": 5200,
-    "mental_power": 5200
+    "mental_power": 5200,
+    "price": 2767600,
+    "shop_weight": 0.1
   },
   {
     "id": "talisman_012",
@@ -933,7 +1075,9 @@
     "magic_damage": 7200,
     "physical_damage": 1600,
     "magic_defense": 5600,
-    "mental_power": 5600
+    "mental_power": 5600,
+    "price": 2974800,
+    "shop_weight": 0.1
   },
   {
     "id": "cauldron_001",
@@ -946,7 +1090,9 @@
     "magic_damage": 10,
     "physical_damage": 8,
     "magic_defense": 10,
-    "mental_power": 6
+    "mental_power": 6,
+    "price": 290,
+    "shop_weight": 1000
   },
   {
     "id": "cauldron_002",
@@ -959,7 +1105,9 @@
     "magic_damage": 13,
     "physical_damage": 12,
     "magic_defense": 15,
-    "mental_power": 8
+    "mental_power": 8,
+    "price": 410,
+    "shop_weight": 1000
   },
   {
     "id": "cauldron_003",
@@ -972,7 +1120,9 @@
     "magic_damage": 38,
     "physical_damage": 30,
     "magic_defense": 40,
-    "mental_power": 25
+    "mental_power": 25,
+    "price": 6750,
+    "shop_weight": 200
   },
   {
     "id": "cauldron_004",
@@ -985,7 +1135,9 @@
     "magic_damage": 42,
     "physical_damage": 35,
     "magic_defense": 45,
-    "mental_power": 28
+    "mental_power": 28,
+    "price": 7620,
+    "shop_weight": 200
   },
   {
     "id": "cauldron_005",
@@ -998,7 +1150,9 @@
     "magic_damage": 78,
     "physical_damage": 65,
     "magic_defense": 85,
-    "mental_power": 55
+    "mental_power": 55,
+    "price": 16695,
+    "shop_weight": 80
   },
   {
     "id": "cauldron_006",
@@ -1011,7 +1165,9 @@
     "magic_damage": 155,
     "physical_damage": 130,
     "magic_defense": 170,
-    "mental_power": 110
+    "mental_power": 110,
+    "price": 35700,
+    "shop_weight": 30
   },
   {
     "id": "cauldron_007",
@@ -1024,7 +1180,9 @@
     "magic_damage": 310,
     "physical_damage": 260,
     "magic_defense": 340,
-    "mental_power": 220
+    "mental_power": 220,
+    "price": 85680,
+    "shop_weight": 10
   },
   {
     "id": "cauldron_008",
@@ -1037,7 +1195,9 @@
     "magic_damage": 620,
     "physical_damage": 520,
     "magic_defense": 680,
-    "mental_power": 440
+    "mental_power": 440,
+    "price": 228480,
+    "shop_weight": 3
   },
   {
     "id": "cauldron_009",
@@ -1050,7 +1210,9 @@
     "magic_damage": 1240,
     "physical_damage": 1040,
     "magic_defense": 1360,
-    "mental_power": 880
+    "mental_power": 880,
+    "price": 571200,
+    "shop_weight": 1
   },
   {
     "id": "cauldron_010",
@@ -1063,7 +1225,9 @@
     "magic_damage": 2600,
     "physical_damage": 2200,
     "magic_defense": 2800,
-    "mental_power": 1800
+    "mental_power": 1800,
+    "price": 1349800,
+    "shop_weight": 0.3
   },
   {
     "id": "cauldron_011",
@@ -1076,7 +1240,9 @@
     "magic_damage": 5400,
     "physical_damage": 4600,
     "magic_defense": 5800,
-    "mental_power": 3800
+    "mental_power": 3800,
+    "price": 3059900,
+    "shop_weight": 0.1
   },
   {
     "id": "cauldron_012",
@@ -1089,7 +1255,9 @@
     "magic_damage": 5600,
     "physical_damage": 4800,
     "magic_defense": 6200,
-    "mental_power": 4200
+    "mental_power": 4200,
+    "price": 3230100,
+    "shop_weight": 0.1
   },
   {
     "id": "staff_001",
@@ -1102,7 +1270,9 @@
     "magic_damage": 5,
     "physical_damage": 12,
     "physical_defense": 6,
-    "mental_power": 5
+    "mental_power": 5,
+    "price": 243,
+    "shop_weight": 1000
   },
   {
     "id": "staff_002",
@@ -1115,7 +1285,9 @@
     "magic_damage": 8,
     "physical_damage": 18,
     "physical_defense": 10,
-    "mental_power": 7
+    "mental_power": 7,
+    "price": 375,
+    "shop_weight": 1000
   },
   {
     "id": "staff_003",
@@ -1128,7 +1300,9 @@
     "magic_damage": 28,
     "physical_damage": 48,
     "physical_defense": 28,
-    "mental_power": 22
+    "mental_power": 22,
+    "price": 6564,
+    "shop_weight": 200
   },
   {
     "id": "staff_004",
@@ -1141,7 +1315,9 @@
     "magic_damage": 32,
     "physical_damage": 52,
     "physical_defense": 32,
-    "mental_power": 25
+    "mental_power": 25,
+    "price": 7326,
+    "shop_weight": 200
   },
   {
     "id": "staff_005",
@@ -1154,7 +1330,9 @@
     "magic_damage": 65,
     "physical_damage": 95,
     "physical_defense": 65,
-    "mental_power": 50
+    "mental_power": 50,
+    "price": 16590,
+    "shop_weight": 80
   },
   {
     "id": "staff_006",
@@ -1167,7 +1345,9 @@
     "magic_damage": 130,
     "physical_damage": 180,
     "physical_defense": 130,
-    "mental_power": 100
+    "mental_power": 100,
+    "price": 34800,
+    "shop_weight": 30
   },
   {
     "id": "staff_007",
@@ -1180,7 +1360,9 @@
     "magic_damage": 260,
     "physical_damage": 360,
     "physical_defense": 260,
-    "mental_power": 200
+    "mental_power": 200,
+    "price": 83520,
+    "shop_weight": 10
   },
   {
     "id": "staff_008",
@@ -1193,7 +1375,9 @@
     "magic_damage": 520,
     "physical_damage": 720,
     "physical_defense": 520,
-    "mental_power": 400
+    "mental_power": 400,
+    "price": 222720,
+    "shop_weight": 3
   },
   {
     "id": "staff_009",
@@ -1206,7 +1390,9 @@
     "magic_damage": 1040,
     "physical_damage": 1440,
     "physical_defense": 1040,
-    "mental_power": 800
+    "mental_power": 800,
+    "price": 556800,
+    "shop_weight": 1
   },
   {
     "id": "staff_010",
@@ -1219,7 +1405,9 @@
     "magic_damage": 2200,
     "physical_damage": 3000,
     "physical_defense": 2200,
-    "mental_power": 1700
+    "mental_power": 1700,
+    "price": 1327700,
+    "shop_weight": 0.3
   },
   {
     "id": "staff_011",
@@ -1232,7 +1420,9 @@
     "magic_damage": 4600,
     "physical_damage": 6400,
     "physical_defense": 4600,
-    "mental_power": 3600
+    "mental_power": 3600,
+    "price": 3048800,
+    "shop_weight": 0.1
   },
   {
     "id": "staff_012",
@@ -1245,7 +1435,9 @@
     "magic_damage": 4800,
     "physical_damage": 6800,
     "physical_defense": 4800,
-    "mental_power": 4000
+    "mental_power": 4000,
+    "price": 3226400,
+    "shop_weight": 0.1
   },
   {
     "id": "spear_001",
@@ -1258,7 +1450,9 @@
     "magic_damage": 6,
     "physical_damage": 14,
     "physical_defense": 4,
-    "mental_power": 6
+    "mental_power": 6,
+    "price": 262,
+    "shop_weight": 1000
   },
   {
     "id": "spear_002",
@@ -1271,7 +1465,9 @@
     "magic_damage": 10,
     "physical_damage": 20,
     "physical_defense": 6,
-    "mental_power": 10
+    "mental_power": 10,
+    "price": 398,
+    "shop_weight": 1000
   },
   {
     "id": "spear_003",
@@ -1284,7 +1480,9 @@
     "magic_damage": 32,
     "physical_damage": 52,
     "physical_defense": 18,
-    "mental_power": 28
+    "mental_power": 28,
+    "price": 6744,
+    "shop_weight": 200
   },
   {
     "id": "spear_004",
@@ -1297,7 +1495,9 @@
     "magic_damage": 36,
     "physical_damage": 56,
     "physical_defense": 20,
-    "mental_power": 32
+    "mental_power": 32,
+    "price": 7440,
+    "shop_weight": 200
   },
   {
     "id": "spear_005",
@@ -1310,7 +1510,9 @@
     "magic_damage": 72,
     "physical_damage": 102,
     "physical_defense": 42,
-    "mental_power": 62
+    "mental_power": 62,
+    "price": 16702,
+    "shop_weight": 80
   },
   {
     "id": "spear_006",
@@ -1323,7 +1525,9 @@
     "magic_damage": 145,
     "physical_damage": 195,
     "physical_defense": 85,
-    "mental_power": 125
+    "mental_power": 125,
+    "price": 35287,
+    "shop_weight": 30
   },
   {
     "id": "spear_007",
@@ -1336,7 +1540,9 @@
     "magic_damage": 290,
     "physical_damage": 390,
     "physical_defense": 170,
-    "mental_power": 250
+    "mental_power": 250,
+    "price": 84690,
+    "shop_weight": 10
   },
   {
     "id": "spear_008",
@@ -1349,7 +1555,9 @@
     "magic_damage": 580,
     "physical_damage": 780,
     "physical_defense": 340,
-    "mental_power": 500
+    "mental_power": 500,
+    "price": 225840,
+    "shop_weight": 3
   },
   {
     "id": "spear_009",
@@ -1362,7 +1570,9 @@
     "magic_damage": 1160,
     "physical_damage": 1560,
     "physical_defense": 680,
-    "mental_power": 1000
+    "mental_power": 1000,
+    "price": 564600,
+    "shop_weight": 1
   },
   {
     "id": "spear_010",
@@ -1375,7 +1585,9 @@
     "magic_damage": 2400,
     "physical_damage": 3200,
     "physical_defense": 1400,
-    "mental_power": 2100
+    "mental_power": 2100,
+    "price": 1320900,
+    "shop_weight": 0.3
   },
   {
     "id": "spear_011",
@@ -1388,7 +1600,9 @@
     "magic_damage": 5000,
     "physical_damage": 6800,
     "physical_defense": 2900,
-    "mental_power": 4400
+    "mental_power": 4400,
+    "price": 3019200,
+    "shop_weight": 0.1
   },
   {
     "id": "spear_012",
@@ -1401,7 +1615,9 @@
     "magic_damage": 5200,
     "physical_damage": 7200,
     "physical_defense": 3200,
-    "mental_power": 4800
+    "mental_power": 4800,
+    "price": 3211600,
+    "shop_weight": 0.1
   },
   {
     "id": "brush_001",
@@ -1414,7 +1630,9 @@
     "magic_damage": 14,
     "physical_damage": 4,
     "magic_defense": 6,
-    "mental_power": 12
+    "mental_power": 12,
+    "price": 288,
+    "shop_weight": 1000
   },
   {
     "id": "brush_002",
@@ -1427,7 +1645,9 @@
     "magic_damage": 20,
     "physical_damage": 6,
     "magic_defense": 10,
-    "mental_power": 18
+    "mental_power": 18,
+    "price": 430,
+    "shop_weight": 1000
   },
   {
     "id": "brush_003",
@@ -1440,7 +1660,9 @@
     "magic_damage": 52,
     "physical_damage": 15,
     "magic_defense": 30,
-    "mental_power": 45
+    "mental_power": 45,
+    "price": 6810,
+    "shop_weight": 200
   },
   {
     "id": "brush_004",
@@ -1453,7 +1675,9 @@
     "magic_damage": 58,
     "physical_damage": 18,
     "magic_defense": 35,
-    "mental_power": 50
+    "mental_power": 50,
+    "price": 7740,
+    "shop_weight": 200
   },
   {
     "id": "brush_005",
@@ -1466,7 +1690,9 @@
     "magic_damage": 102,
     "physical_damage": 35,
     "magic_defense": 68,
-    "mental_power": 95
+    "mental_power": 95,
+    "price": 16723,
+    "shop_weight": 80
   },
   {
     "id": "brush_006",
@@ -1479,7 +1705,9 @@
     "magic_damage": 195,
     "physical_damage": 70,
     "magic_defense": 135,
-    "mental_power": 180
+    "mental_power": 180,
+    "price": 34725,
+    "shop_weight": 30
   },
   {
     "id": "brush_007",
@@ -1492,7 +1720,9 @@
     "magic_damage": 390,
     "physical_damage": 140,
     "magic_defense": 270,
-    "mental_power": 360
+    "mental_power": 360,
+    "price": 83340,
+    "shop_weight": 10
   },
   {
     "id": "brush_008",
@@ -1505,7 +1735,9 @@
     "magic_damage": 780,
     "physical_damage": 280,
     "magic_defense": 540,
-    "mental_power": 720
+    "mental_power": 720,
+    "price": 222240,
+    "shop_weight": 3
   },
   {
     "id": "brush_009",
@@ -1518,7 +1750,9 @@
     "magic_damage": 1560,
     "physical_damage": 560,
     "magic_defense": 1080,
-    "mental_power": 1440
+    "mental_power": 1440,
+    "price": 555600,
+    "shop_weight": 1
   },
   {
     "id": "brush_010",
@@ -1531,7 +1765,9 @@
     "magic_damage": 3200,
     "physical_damage": 1200,
     "magic_defense": 2300,
-    "mental_power": 2900
+    "mental_power": 2900,
+    "price": 1307300,
+    "shop_weight": 0.3
   },
   {
     "id": "brush_011",
@@ -1544,7 +1780,9 @@
     "magic_damage": 6600,
     "physical_damage": 2500,
     "magic_defense": 4800,
-    "mental_power": 6000
+    "mental_power": 6000,
+    "price": 2948900,
+    "shop_weight": 0.1
   },
   {
     "id": "brush_012",
@@ -1557,6 +1795,8 @@
     "magic_damage": 7000,
     "physical_damage": 2800,
     "magic_defense": 5200,
-    "mental_power": 6500
+    "mental_power": 6500,
+    "price": 3183850,
+    "shop_weight": 0.1
   }
 ]

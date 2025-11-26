@@ -14,7 +14,9 @@ class ConfigManager:
         self.level_data: List[dict] = []
         self.items_data: Dict[str, dict] = {}  # 物品数据，key为物品名称
         self.weapons_data: Dict[str, dict] = {}  # 武器数据，key为武器名称
-        self.pills_data: Dict[str, dict] = {}  # 丹药数据，key为丹药名称
+        self.pills_data: Dict[str, dict] = {}  # 破境丹数据，key为丹药名称
+        self.exp_pills_data: Dict[str, dict] = {}  # 修为丹数据，key为丹药名称
+        self.utility_pills_data: Dict[str, dict] = {}  # 功能丹数据，key为丹药名称
         self._load_all()
 
     def _load_json_data(self, file_path: Path) -> List[dict]:
@@ -79,10 +81,18 @@ class ConfigManager:
         pills_path = self._base_dir / "config" / "pills.json"
         self.pills_data = self._load_items_data(pills_path)
 
+        exp_pills_path = self._base_dir / "config" / "exp_pills.json"
+        self.exp_pills_data = self._load_items_data(exp_pills_path)
+
+        utility_pills_path = self._base_dir / "config" / "utility_pills.json"
+        self.utility_pills_data = self._load_items_data(utility_pills_path)
+
         logger.info(
             f"配置管理器初始化完成，"
             f"加载了 {len(self.level_data)} 个境界配置，"
             f"{len(self.items_data)} 个物品配置，"
             f"{len(self.weapons_data)} 个武器配置，"
-            f"{len(self.pills_data)} 个丹药配置"
+            f"{len(self.pills_data)} 个破境丹配置，"
+            f"{len(self.exp_pills_data)} 个修为丹配置，"
+            f"{len(self.utility_pills_data)} 个功能丹配置"
         )

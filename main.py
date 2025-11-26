@@ -4,7 +4,7 @@ from astrbot.api.star import Context, Star, register
 from astrbot.api.event import AstrMessageEvent, filter
 from .data import DataBase, MigrationManager
 from .config_manager import ConfigManager
-from .handlers import MiscHandler, PlayerHandler, EquipmentHandler, BreakthroughHandler
+from .handlers import MiscHandler, PlayerHandler, EquipmentHandler, BreakthroughHandler, PillHandler, ShopHandler
 
 # 指令定义
 CMD_HELP = "修仙帮助"
@@ -18,6 +18,12 @@ CMD_EQUIP_ITEM = "装备"
 CMD_UNEQUIP_ITEM = "卸下"
 CMD_BREAKTHROUGH = "突破"
 CMD_BREAKTHROUGH_INFO = "突破信息"
+CMD_USE_PILL = "服用丹药"
+CMD_SHOW_PILLS = "丹药背包"
+CMD_PILL_INFO = "丹药信息"
+CMD_SHOP = "商店"
+CMD_BUY = "购买"
+CMD_REFRESH_SHOP = "刷新商店"
 
 @register(
     "astrbot_plugin_xiuxian_lite",
@@ -43,6 +49,8 @@ class XiuXianPlugin(Star):
         self.player_handler = PlayerHandler(self.db, self.config, self.config_manager)
         self.equipment_handler = EquipmentHandler(self.db, self.config_manager)
         self.breakthrough_handler = BreakthroughHandler(self.db, self.config_manager, self.config)
+        self.pill_handler = PillHandler(self.db, self.config_manager)
+        self.shop_handler = ShopHandler(self.db, self.config, self.config_manager)
 
         access_control_config = self.config.get("ACCESS_CONTROL", {})
         self.whitelist_groups = [str(g) for g in access_control_config.get("WHITELIST_GROUPS", [])]
@@ -172,4 +180,52 @@ class XiuXianPlugin(Star):
             await self._send_access_denied_message(event)
             return
         async for r in self.breakthrough_handler.handle_breakthrough(event, pill_name):
+            yield r
+
+    @filter.command(CMD_USE_PILL, "服用丹药")
+    async def handle_use_pill(self, event: AstrMessageEvent, pill_name: str = ""):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.pill_handler.handle_use_pill(event, pill_name):
+            yield r
+
+    @filter.command(CMD_SHOW_PILLS, "查看丹药背包")
+    async def handle_show_pills(self, event: AstrMessageEvent):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.pill_handler.handle_show_pills(event):
+            yield r
+
+    @filter.command(CMD_PILL_INFO, "查看丹药信息")
+    async def handle_pill_info(self, event: AstrMessageEvent, pill_name: str = ""):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.pill_handler.handle_pill_info(event, pill_name):
+            yield r
+
+    @filter.command(CMD_SHOP, "查看商店物品")
+    async def handle_shop(self, event: AstrMessageEvent):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.shop_handler.handle_shop(event):
+            yield r
+
+    @filter.command(CMD_BUY, "购买商店物品")
+    async def handle_buy(self, event: AstrMessageEvent, item_name: str = ""):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.shop_handler.handle_buy(event, item_name):
+            yield r
+
+    @filter.command(CMD_REFRESH_SHOP, "手动刷新商店")
+    async def handle_refresh_shop(self, event: AstrMessageEvent):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.shop_handler.handle_refresh_shop(event):
             yield r

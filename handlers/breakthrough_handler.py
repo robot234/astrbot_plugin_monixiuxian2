@@ -2,7 +2,7 @@
 
 from astrbot.api.event import AstrMessageEvent
 from ..data import DataBase
-from ..core import BreakthroughManager
+from ..core import BreakthroughManager, PillManager
 from ..config_manager import ConfigManager
 from ..models import Player
 from .utils import player_required
@@ -21,6 +21,7 @@ class BreakthroughHandler:
         self.config_manager = config_manager
         self.config = config
         self.breakthrough_manager = BreakthroughManager(db, config_manager, config)
+        self.pill_manager = PillManager(db, config_manager)
 
     @player_required
     async def handle_breakthrough_info(self, player: Player, event: AstrMessageEvent):
@@ -32,6 +33,9 @@ class BreakthroughHandler:
             yield event.plain_result("你已经达到了最高境界，无法继续突破！")
             return
 
+        await self.pill_manager.update_temporary_effects(player)
+        modifiers = self.pill_manager.get_breakthrough_modifiers(player)
+
         # 获取当前和下一境界信息
         current_level_data = self.config_manager.level_data[player.level_index]
         next_level_data = self.config_manager.level_data[player.level_index + 1]
@@ -40,6 +44,7 @@ class BreakthroughHandler:
         next_level_name = next_level_data["level_name"]
         required_exp = next_level_data.get("exp_needed", 0)
         base_success_rate = next_level_data.get("success_rate", 0.5)
+        temp_bonus = modifiers["temp_bonus"]
 
         # 检查修为是否满足
         exp_satisfied = player.experience >= required_exp
@@ -52,7 +57,7 @@ class BreakthroughHandler:
                 pill_data.get("target_level_index") == player.level_index + 1):
                 max_rate = pill_data.get("max_success_rate", 1.0)
                 breakthrough_bonus = pill_data.get("breakthrough_bonus", 0)
-                final_rate = min(base_success_rate + breakthrough_bonus, max_rate)
+                final_rate = min(base_success_rate + temp_bonus + breakthrough_bonus, max_rate)
                 available_pills.append({
                     "name": pill_name,
                     "rank": pill_data.get("rank", ""),
@@ -74,6 +79,12 @@ class BreakthroughHandler:
             f"【突破成功率】\n",
             f"基础成功率：{base_success_rate:.1%}\n",
         ]
+
+        if temp_bonus:
+            info_lines.append(f"临时丹药加成：{temp_bonus:+.1%}\n")
+        death_reduce = 1 - modifiers["permanent_death_multiplier"]
+        if death_reduce > 0:
+            info_lines.append(f"突破死亡概率降低：{death_reduce:.1%}\n")
 
         if available_pills:
             info_lines.append(f"\n【可用破境丹】\n")
@@ -101,6 +112,9 @@ class BreakthroughHandler:
     async def handle_breakthrough(self, player: Player, event: AstrMessageEvent, pill_name: str = None):
         """执行突破"""
         display_name = event.get_sender_name()
+
+        await self.pill_manager.update_temporary_effects(player)
+        modifiers = self.pill_manager.get_breakthrough_modifiers(player)
 
         # 如果指定了破境丹，验证其有效性
         if pill_name and pill_name.strip():
@@ -133,7 +147,13 @@ class BreakthroughHandler:
 
         # 执行突破
         success, message, died = await self.breakthrough_manager.execute_breakthrough(
-            player, pill_name
+            player,
+            pill_name,
+            modifiers["temp_bonus"],
+            modifiers["permanent_death_multiplier"]
         )
+
+        if modifiers["has_temp_effects"]:
+            await self.pill_manager.consume_breakthrough_effects(player)
 
         yield event.plain_result(message)

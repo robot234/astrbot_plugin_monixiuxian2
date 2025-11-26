@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 5  # 版本号提升 - 添加装备系统
+LATEST_DB_VERSION = 8  # 版本号提升 - 添加商店系统
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -141,6 +141,51 @@ async def _migrate_to_v5(conn: aiosqlite.Connection, config_manager: ConfigManag
 
     logger.info("v5迁移完成：装备系统")
 
+@migration(6)
+async def _migrate_to_v6(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v6 - 添加丹药系统"""
+    logger.info("开始迁移到v6：添加丹药系统")
+
+    # 添加丹药系统相关字段
+    await conn.execute("ALTER TABLE players ADD COLUMN active_pill_effects TEXT NOT NULL DEFAULT '[]'")
+    await conn.execute("ALTER TABLE players ADD COLUMN permanent_pill_gains TEXT NOT NULL DEFAULT '{}'")
+    await conn.execute("ALTER TABLE players ADD COLUMN has_resurrection_pill INTEGER NOT NULL DEFAULT 0")
+    await conn.execute("ALTER TABLE players ADD COLUMN pills_inventory TEXT NOT NULL DEFAULT '{}'")
+
+    logger.info("v6迁移完成：丹药系统")
+
+@migration(7)
+async def _migrate_to_v7(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v7 - 丹药系统扩展字段"""
+    logger.info("开始迁移到v7：丹药系统扩展字段")
+
+    await conn.execute("ALTER TABLE players ADD COLUMN has_debuff_shield INTEGER NOT NULL DEFAULT 0")
+
+    logger.info("v7迁移完成：新增定魂丹护盾字段")
+
+@migration(8)
+async def _migrate_to_v8(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v8 - 添加商店系统"""
+    logger.info("开始迁移到v8：添加商店系统")
+
+    # 创建商店表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS shop (
+            shop_id TEXT PRIMARY KEY,
+            last_refresh_time INTEGER NOT NULL DEFAULT 0,
+            current_items TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+
+    # 插入全局商店数据
+    await conn.execute("""
+        INSERT OR IGNORE INTO shop (shop_id, last_refresh_time, current_items)
+        VALUES ('global', 0, '[]')
+    """)
+
+    logger.info("v8迁移完成：商店系统")
+
+
 async def _create_all_tables_v2(conn: aiosqlite.Connection):
     """创建所有表 - v2版本，新属性系统（灵修/体修）"""
 
@@ -174,11 +219,31 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             weapon TEXT NOT NULL DEFAULT '',
             armor TEXT NOT NULL DEFAULT '',
             main_technique TEXT NOT NULL DEFAULT '',
-            techniques TEXT NOT NULL DEFAULT '[]'
+            techniques TEXT NOT NULL DEFAULT '[]',
+            active_pill_effects TEXT NOT NULL DEFAULT '[]',
+            permanent_pill_gains TEXT NOT NULL DEFAULT '{}',
+            has_resurrection_pill INTEGER NOT NULL DEFAULT 0,
+            has_debuff_shield INTEGER NOT NULL DEFAULT 0,
+            pills_inventory TEXT NOT NULL DEFAULT '{}'
         )
     """)
 
     # 创建索引
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_player_level ON players(level_index)")
+
+    # 创建商店表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS shop (
+            shop_id TEXT PRIMARY KEY,
+            last_refresh_time INTEGER NOT NULL DEFAULT 0,
+            current_items TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+
+    # 插入全局商店数据
+    await conn.execute("""
+        INSERT OR IGNORE INTO shop (shop_id, last_refresh_time, current_items)
+        VALUES ('global', 0, '[]')
+    """)
 
     logger.info("数据库表已创建完成（v2 - 新属性系统）")

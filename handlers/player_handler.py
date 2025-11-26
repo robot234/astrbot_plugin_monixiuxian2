@@ -5,7 +5,7 @@ from datetime import datetime
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
-from ..core import CultivationManager
+from ..core import CultivationManager, PillManager
 from ..models import Player
 from ..config_manager import ConfigManager
 from .utils import player_required
@@ -26,6 +26,7 @@ class PlayerHandler:
         self.config = config
         self.config_manager = config_manager
         self.cultivation_manager = CultivationManager(config, config_manager)
+        self.pill_manager = PillManager(self.db, self.config_manager)
 
     async def handle_start_xiuxian(self, event: AstrMessageEvent, cultivation_type: str = ""):
         """处理创建角色
@@ -111,6 +112,10 @@ class PlayerHandler:
         display_name = event.get_sender_name()
         required_exp = player.get_required_exp(self.config_manager)
 
+        # 更新丹药效果并计算最终属性倍率
+        await self.pill_manager.update_temporary_effects(player)
+        pill_multipliers = self.pill_manager.calculate_pill_attribute_effects(player)
+
         # 获取装备加成后的灵气容量
         from ..core import EquipmentManager
         equipment_manager = EquipmentManager(self.db)
@@ -119,7 +124,7 @@ class PlayerHandler:
             self.config_manager.items_data,
             self.config_manager.weapons_data
         )
-        total_attrs = player.get_total_attributes(equipped_items)
+        total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
 
         reply_msg = (
             f"--- 道友 {display_name} 的信息 ---\n"
@@ -185,6 +190,10 @@ class PlayerHandler:
             yield event.plain_result("道友闭关时间不足1分钟，未获得修为。请继续闭关修炼。")
             return
 
+        # 更新丹药效果，确保持续结算
+        await self.pill_manager.update_temporary_effects(player)
+        pill_multipliers = self.pill_manager.calculate_pill_attribute_effects(player)
+
         # 获取主修心法的修为加成
         technique_bonus = 0.0
         if player.main_technique:
@@ -202,7 +211,12 @@ class PlayerHandler:
                     break
 
         # 计算获得的修为
-        gained_exp = self.cultivation_manager.calculate_cultivation_exp(player, duration_minutes, technique_bonus)
+        gained_exp = self.cultivation_manager.calculate_cultivation_exp(
+            player,
+            duration_minutes,
+            technique_bonus,
+            pill_multipliers
+        )
 
         # 更新玩家数据
         player.experience += gained_exp
