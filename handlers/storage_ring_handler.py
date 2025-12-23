@@ -189,65 +189,62 @@ class StorageRingHandler:
     @player_required
     async def handle_gift_item(self, player: Player, event: AstrMessageEvent, args: str):
         """赠予物品给其他玩家"""
-        import re
+        from astrbot.api.message_components import At, Plain
 
-        # 从原始消息中获取参数（更可靠）
-        raw_msg = event.get_message_str().strip()
-        # 移除命令前缀（支持多种格式）
-        for prefix in [f"#{CMD_GIFT_ITEM}", CMD_GIFT_ITEM, "#赠予", "赠予"]:
-            if raw_msg.startswith(prefix):
-                args = raw_msg[len(prefix):].strip()
+        target_id = None
+        item_name = None
+        count = 1
+
+        # 从消息链中提取 At 组件和文本内容
+        text_parts = []
+        message_chain = event.message_obj.message if hasattr(event, 'message_obj') and event.message_obj else []
+
+        for comp in message_chain:
+            if isinstance(comp, At):
+                # 获取被@的用户ID
+                if target_id is None:
+                    target_id = str(comp.qq) if hasattr(comp, 'qq') else str(comp.target) if hasattr(comp, 'target') else None
+            elif isinstance(comp, Plain):
+                text_parts.append(comp.text)
+
+        # 合并文本内容并移除命令前缀
+        text_content = "".join(text_parts).strip()
+        for prefix in ["#赠予", "赠予"]:
+            if text_content.startswith(prefix):
+                text_content = text_content[len(prefix):].strip()
                 break
 
-        if not args or args.strip() == "":
+        # 如果没有从At组件获取到target_id，尝试从文本解析
+        if not target_id and text_content:
+            parts = text_content.split(None, 1)
+            if len(parts) >= 1:
+                potential_id = parts[0].lstrip('@')
+                if potential_id.isdigit():
+                    target_id = potential_id
+                    text_content = parts[1].strip() if len(parts) > 1 else ""
+
+        # 解析物品名和数量
+        if text_content:
+            parts = text_content.rsplit(" ", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                item_name = parts[0].strip()
+                count = int(parts[1])
+            else:
+                item_name = text_content.strip()
+
+        # 验证必要参数
+        if not target_id:
             yield event.plain_result(
-                f"请指定赠予对象和物品\n"
-                f"用法：{CMD_GIFT_ITEM} QQ号 物品名 [数量]\n"
+                f"请指定赠予对象\n"
+                f"用法：{CMD_GIFT_ITEM} @某人 物品名 [数量]\n"
+                f"或：{CMD_GIFT_ITEM} QQ号 物品名 [数量]\n"
                 f"示例：{CMD_GIFT_ITEM} 123456789 精铁 5"
             )
             return
 
-        args = args.strip()
-
-        # 清理可能存在的 @ 符号和 [At:xxx] 格式
-        args = re.sub(r'\[At:(\d+)\]', r'\1', args)  # [At:123] -> 123
-        args = args.lstrip('@')  # 移除开头的 @
-        args = args.strip()
-
-        # 解析格式: QQ号 物品名 [数量]
-        parts = args.split(None, 1)  # 最多分割成2部分
-        if len(parts) < 2:
-            yield event.plain_result(
-                f"格式错误\n"
-                f"用法：{CMD_GIFT_ITEM} QQ号 物品名 [数量]\n"
-                f"示例：{CMD_GIFT_ITEM} 123456789 精铁"
-            )
-            return
-
-        target_id = parts[0]
-        remaining = parts[1].strip()
-
-        # 验证QQ号是纯数字
-        if not target_id.isdigit():
-            yield event.plain_result(
-                f"QQ号必须是纯数字\n"
-                f"用法：{CMD_GIFT_ITEM} QQ号 物品名 [数量]\n"
-                f"示例：{CMD_GIFT_ITEM} 123456789 精铁"
-            )
-            return
-
-        if not remaining:
+        if not item_name:
             yield event.plain_result("请指定要赠予的物品名称")
             return
-
-        # 解析物品名和数量
-        item_parts = remaining.rsplit(" ", 1)
-        if len(item_parts) == 2 and item_parts[1].isdigit():
-            item_name = item_parts[0]
-            count = int(item_parts[1])
-        else:
-            item_name = remaining
-            count = 1
 
         if count <= 0:
             yield event.plain_result("数量必须大于0")
