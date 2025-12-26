@@ -165,13 +165,13 @@ class PlayerHandler:
                 "灵石排行": "未知"
             }
             
-            img_data = await img_gen.generate_user_info_card(user_id, detail_map)
+            img_data = await img_gen.generate_user_info_card(player.user_id, detail_map)
             if img_data:
                 # 保存临时文件
                 import os
                 temp_dir = self.config_manager._base_dir / "temp"
                 temp_dir.mkdir(exist_ok=True)
-                temp_path = temp_dir / f"user_card_{user_id}.jpg"
+                temp_path = temp_dir / f"user_card_{player.user_id}.jpg"
                 with open(temp_path, "wb") as f:
                     f.write(img_data.getvalue())
                 yield event.image_result(str(temp_path))
