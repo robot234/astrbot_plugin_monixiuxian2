@@ -116,7 +116,7 @@ CMD_IMPART_RANKING = "传承排行"
     "linjianyan0229",
     "基于astrbot框架的文字修仙游戏（重构版）",
     "2.3.0",
-    "https://github.com/xiaojuwa/astrbot_plugin_monixiuxian"
+    "https://github.com/xiaojuwa/astrbot_plugin_monixiuxian2"
 )
 class XiuXianPlugin(Star):
     """修仙插件 - 文字修仙游戏"""
