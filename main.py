@@ -60,6 +60,8 @@ CMD_DISCARD_ITEM = "丢弃"
 CMD_GIFT_ITEM = "赠予"
 CMD_ACCEPT_GIFT = "接收"
 CMD_REJECT_GIFT = "拒绝"
+CMD_SEARCH_ITEM = "搜索物品"
+CMD_RETRIEVE_ALL = "取出所有"
 
 # 宗门系统指令
 CMD_CREATE_SECT = "创建宗门"
@@ -176,13 +178,16 @@ class XiuXianPlugin(Star):
         self.storage_ring_handler = StorageRingHandler(self.db, self.config_manager)
         
         # 初始化核心管理器
+        from .core import StorageRingManager
+        self.storage_ring_mgr = StorageRingManager(self.db, self.config_manager)
+        
         self.combat_mgr = CombatManager()
         self.sect_mgr = SectManager(self.db, self.config_manager)
-        self.boss_mgr = BossManager(self.db, self.combat_mgr, self.config_manager)
-        self.rift_mgr = RiftManager(self.db, self.config_manager)
+        self.boss_mgr = BossManager(self.db, self.combat_mgr, self.config_manager, self.storage_ring_mgr)
+        self.rift_mgr = RiftManager(self.db, self.config_manager, self.storage_ring_mgr)
         self.rank_mgr = RankingManager(self.db, self.combat_mgr)
-        self.adventure_mgr = AdventureManager(self.db)
-        self.alchemy_mgr = AlchemyManager(self.db, self.config_manager)
+        self.adventure_mgr = AdventureManager(self.db, self.storage_ring_mgr)
+        self.alchemy_mgr = AlchemyManager(self.db, self.config_manager, self.storage_ring_mgr)
         self.impart_mgr = ImpartManager(self.db)
 
         # 初始化新功能处理器
@@ -198,7 +203,7 @@ class XiuXianPlugin(Star):
         
         # Phase 2: 灵石银行和悬赏令
         self.bank_mgr = BankManager(self.db)
-        self.bounty_mgr = BountyManager(self.db)
+        self.bounty_mgr = BountyManager(self.db, self.storage_ring_mgr)
         self.bank_handlers = BankHandlers(self.db, self.bank_mgr)
         self.bounty_handlers = BountyHandlers(self.db, self.bounty_mgr)
         
@@ -209,7 +214,7 @@ class XiuXianPlugin(Star):
         # Phase 4: 扩展功能
         self.blessed_land_mgr = BlessedLandManager(self.db)
         self.blessed_land_handlers = BlessedLandHandlers(self.db, self.blessed_land_mgr)
-        self.spirit_farm_mgr = SpiritFarmManager(self.db)
+        self.spirit_farm_mgr = SpiritFarmManager(self.db, self.storage_ring_mgr)
         self.spirit_farm_handlers = SpiritFarmHandlers(self.db, self.spirit_farm_mgr)
         self.dual_cult_mgr = DualCultivationManager(self.db)
         self.dual_cult_handlers = DualCultivationHandlers(self.db, self.dual_cult_mgr)
@@ -547,6 +552,18 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_reject_gift(self, event: AstrMessageEvent):
         async for r in self.storage_ring_handler.handle_reject_gift(event):
+            yield r
+
+    @filter.command(CMD_SEARCH_ITEM, "搜索储物戒物品")
+    @require_whitelist
+    async def handle_search_item(self, event: AstrMessageEvent, keyword: str = ""):
+        async for r in self.storage_ring_handler.handle_search_item(event, keyword):
+            yield r
+
+    @filter.command(CMD_RETRIEVE_ALL, "批量取出物品")
+    @require_whitelist
+    async def handle_retrieve_all(self, event: AstrMessageEvent, category: str = ""):
+        async for r in self.storage_ring_handler.handle_retrieve_all(event, category):
             yield r
 
     # ===== 宗门系统指令 =====

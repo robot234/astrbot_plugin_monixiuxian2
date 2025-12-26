@@ -2,9 +2,12 @@
 """灵田系统管理器"""
 import time
 import json
-from typing import Tuple, Optional, Dict, List
+from typing import Tuple, Optional, Dict, List, TYPE_CHECKING
 from ..data import DataBase
 from ..models import Player
+
+if TYPE_CHECKING:
+    from ..core import StorageRingManager
 
 __all__ = ["SpiritFarmManager"]
 
@@ -30,8 +33,9 @@ FARM_LEVELS = {
 class SpiritFarmManager:
     """灵田管理器"""
     
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
+        self.storage_ring_manager = storage_ring_manager
     
     async def get_user_farm(self, user_id: str) -> Optional[Dict]:
         """获取用户灵田信息"""
@@ -145,17 +149,30 @@ class SpiritFarmManager:
         total_exp = 0
         total_gold = 0
         harvest_details = []
+        herb_counts = {}  # 统计各类灵草数量
         
         for crop in mature_crops:
-            herb_config = SPIRIT_HERBS.get(crop["name"], SPIRIT_HERBS["灵草"])
+            herb_name = crop["name"]
+            herb_config = SPIRIT_HERBS.get(herb_name, SPIRIT_HERBS["灵草"])
             total_exp += herb_config["exp_yield"]
             total_gold += herb_config["gold_yield"]
-            harvest_details.append(crop["name"])
+            harvest_details.append(herb_name)
+            herb_counts[herb_name] = herb_counts.get(herb_name, 0) + 1
         
         # 应用奖励
         player.experience += total_exp
         player.gold += total_gold
         await self.db.update_player(player)
+        
+        # 将灵草存入储物戒
+        stored_items = []
+        if self.storage_ring_manager:
+            for herb_name, count in herb_counts.items():
+                success, _ = await self.storage_ring_manager.store_item(player, herb_name, count, silent=True)
+                if success:
+                    stored_items.append(f"{herb_name}×{count}")
+                else:
+                    stored_items.append(f"{herb_name}×{count}（储物戒已满，丢失）")
         
         # 更新灵田
         await self.db.conn.execute(
@@ -164,12 +181,16 @@ class SpiritFarmManager:
         )
         await self.db.conn.commit()
         
+        item_msg = ""
+        if stored_items:
+            item_msg = f"\n📦 存入储物戒：\n  " + "\n  ".join(stored_items)
+        
         return True, (
             f"🌾 收获成功！\n"
             f"━━━━━━━━━━━━━━━\n"
             f"收获：{', '.join(harvest_details)}\n"
             f"获得修为：+{total_exp:,}\n"
-            f"获得灵石：+{total_gold:,}\n"
+            f"获得灵石：+{total_gold:,}{item_msg}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"剩余种植：{len(remaining_crops)} 株"
         )

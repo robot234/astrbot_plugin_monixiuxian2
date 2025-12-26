@@ -6,11 +6,14 @@ Boss系统管理器 - 处理Boss生成、战斗、奖励等逻辑
 
 import random
 import time
-from typing import Tuple, Dict, Optional
+from typing import Tuple, Dict, Optional, List, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models_extended import Boss, UserStatus
 from ..models import Player
 from .combat_manager import CombatManager, CombatStats
+
+if TYPE_CHECKING:
+    from ..core import StorageRingManager
 
 
 class BossManager:
@@ -35,9 +38,32 @@ class BossManager:
         "天魔", "地魔", "魔神", "妖神", "邪神"
     ]
     
-    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager=None):
+    # Boss物品掉落表
+    BOSS_DROP_TABLE = {
+        "low": [  # 低级Boss (练气-金丹)
+            {"name": "灵兽内丹", "weight": 40, "min": 1, "max": 2},
+            {"name": "妖兽精血", "weight": 30, "min": 1, "max": 3},
+            {"name": "玄铁", "weight": 30, "min": 3, "max": 6},
+        ],
+        "mid": [  # 中级Boss (元婴-化神)
+            {"name": "灵兽内丹", "weight": 30, "min": 2, "max": 4},
+            {"name": "星辰石", "weight": 25, "min": 2, "max": 4},
+            {"name": "天材地宝", "weight": 20, "min": 1, "max": 2},
+            {"name": "功法残页", "weight": 25, "min": 1, "max": 2},
+        ],
+        "high": [  # 高级Boss (炼虚及以上)
+            {"name": "天材地宝", "weight": 30, "min": 2, "max": 4},
+            {"name": "混沌精华", "weight": 25, "min": 1, "max": 2},
+            {"name": "神兽之骨", "weight": 20, "min": 1, "max": 1},
+            {"name": "远古秘籍", "weight": 15, "min": 1, "max": 1},
+            {"name": "仙器碎片", "weight": 10, "min": 1, "max": 1},
+        ],
+    }
+    
+    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager=None, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
         self.combat_mgr = combat_mgr
+        self.storage_ring_manager = storage_ring_manager
         self.config = config_manager.boss_config if config_manager else {}
         self.levels = self.config.get("levels", self.BOSS_LEVELS)
     
@@ -218,6 +244,22 @@ ATK：{atk}
             # 发放奖励
             player.gold += reward
             
+            # 物品掉落
+            item_msg = ""
+            dropped_items = []
+            if self.storage_ring_manager:
+                dropped_items = await self._roll_boss_drops(player, boss)
+                if dropped_items:
+                    item_lines = []
+                    for item_name, count in dropped_items:
+                        success, _ = await self.storage_ring_manager.store_item(player, item_name, count, silent=True)
+                        if success:
+                            item_lines.append(f"  · {item_name} x{count}")
+                        else:
+                            item_lines.append(f"  · {item_name} x{count}（储物戒已满，丢失）")
+                    if item_lines:
+                        item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
+            
             result_msg = f"""
 ╔══════════════════════╗
 ║    挑战成功！    ║
@@ -226,7 +268,7 @@ ATK：{atk}
 你成功击败了『{boss.boss_name}』！
 
 战斗回合数：{battle_result['rounds']}
-获得灵石：{reward}
+获得灵石：{reward}{item_msg}
 
 {player_stats.name}
 HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
@@ -336,3 +378,57 @@ ATK：{boss.atk}
         
         # 生成Boss
         return await self.spawn_boss(base_exp, level_config)
+    
+    async def _roll_boss_drops(self, player: Player, boss: Boss) -> List[Tuple[str, int]]:
+        """
+        根据Boss等级随机掉落物品
+        
+        Args:
+            player: 玩家对象
+            boss: Boss对象
+            
+        Returns:
+            掉落物品列表 [(物品名, 数量), ...]
+        """
+        dropped_items = []
+        
+        # 根据Boss等级确定掉落表
+        boss_level_index = 0
+        for level in self.levels:
+            if level["name"] == boss.boss_level:
+                boss_level_index = level["level_index"]
+                break
+        
+        if boss_level_index <= 6:  # 练气-金丹
+            drop_table = self.BOSS_DROP_TABLE["low"]
+        elif boss_level_index <= 12:  # 元婴-化神
+            drop_table = self.BOSS_DROP_TABLE["mid"]
+        else:  # 炼虚及以上
+            drop_table = self.BOSS_DROP_TABLE["high"]
+        
+        # Boss击杀100%掉落至少1件物品
+        total_weight = sum(item["weight"] for item in drop_table)
+        roll = random.randint(1, total_weight)
+        
+        current_weight = 0
+        for item in drop_table:
+            current_weight += item["weight"]
+            if roll <= current_weight:
+                count = random.randint(item["min"], item["max"])
+                dropped_items.append((item["name"], count))
+                break
+        
+        # 高级Boss有70%概率额外掉落
+        if boss_level_index >= 9:  # 元婴及以上
+            extra_chance = 50 if boss_level_index < 15 else 70
+            if random.randint(1, 100) <= extra_chance:
+                roll = random.randint(1, total_weight)
+                current_weight = 0
+                for item in drop_table:
+                    current_weight += item["weight"]
+                    if roll <= current_weight:
+                        count = random.randint(item["min"], item["max"])
+                        dropped_items.append((item["name"], count))
+                        break
+        
+        return dropped_items

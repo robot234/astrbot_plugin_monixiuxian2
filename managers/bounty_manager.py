@@ -3,9 +3,12 @@
 import time
 import random
 import json
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, TYPE_CHECKING
 from ..data import DataBase
 from ..models import Player
+
+if TYPE_CHECKING:
+    from ..core import StorageRingManager
 
 __all__ = ["BountyManager"]
 
@@ -18,11 +21,44 @@ BOUNTY_TEMPLATES = [
     {"id": 5, "name": "收集灵石", "type": "collect", "min_count": 1000, "max_count": 5000, "base_reward": 200, "cooldown": 900},
 ]
 
+# 悬赏物品奖励表
+BOUNTY_ITEM_REWARDS = {
+    "kill": [
+        {"name": "灵兽毛皮", "weight": 40, "min": 1, "max": 3},
+        {"name": "妖兽精血", "weight": 30, "min": 1, "max": 2},
+        {"name": "灵兽内丹", "weight": 20, "min": 1, "max": 1},
+        {"name": "玄铁", "weight": 10, "min": 1, "max": 2},
+    ],
+    "gather": [
+        {"name": "灵草", "weight": 50, "min": 2, "max": 5},
+        {"name": "精铁", "weight": 30, "min": 1, "max": 3},
+        {"name": "灵石碎片", "weight": 20, "min": 3, "max": 8},
+    ],
+    "escort": [
+        {"name": "玄铁", "weight": 35, "min": 2, "max": 4},
+        {"name": "星辰石", "weight": 25, "min": 1, "max": 2},
+        {"name": "功法残页", "weight": 25, "min": 1, "max": 1},
+        {"name": "天材地宝", "weight": 15, "min": 1, "max": 1},
+    ],
+    "explore": [
+        {"name": "灵草", "weight": 30, "min": 2, "max": 4},
+        {"name": "玄铁", "weight": 25, "min": 1, "max": 3},
+        {"name": "功法残页", "weight": 25, "min": 1, "max": 1},
+        {"name": "秘境精华", "weight": 20, "min": 1, "max": 2},
+    ],
+    "collect": [
+        {"name": "灵石碎片", "weight": 50, "min": 5, "max": 10},
+        {"name": "精铁", "weight": 30, "min": 2, "max": 4},
+        {"name": "灵草", "weight": 20, "min": 1, "max": 3},
+    ],
+}
+
 class BountyManager:
     """悬赏令管理器"""
     
-    def __init__(self, db: DataBase):
+    def __init__(self, db: DataBase, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
+        self.storage_ring_manager = storage_ring_manager
     
     async def get_bounty_list(self, player: Player) -> List[dict]:
         """获取可接取的悬赏任务列表"""
@@ -119,6 +155,23 @@ class BountyManager:
         stone_reward = rewards.get("stone", 0)
         exp_reward = rewards.get("exp", 0)
         
+        # 物品奖励
+        item_msg = ""
+        dropped_items = []
+        if self.storage_ring_manager:
+            bounty_type = active.get("target_type", "gather")
+            dropped_items = await self._roll_bounty_items(player, bounty_type)
+            if dropped_items:
+                item_lines = []
+                for item_name, count in dropped_items:
+                    success, _ = await self.storage_ring_manager.store_item(player, item_name, count, silent=True)
+                    if success:
+                        item_lines.append(f"  · {item_name} x{count}")
+                    else:
+                        item_lines.append(f"  · {item_name} x{count}（储物戒已满，丢失）")
+                if item_lines:
+                    item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
+        
         # 发放奖励
         player.gold += stone_reward
         player.experience += exp_reward
@@ -132,7 +185,7 @@ class BountyManager:
             f"任务：{active['bounty_name']}\n"
             f"━━━━━━━━━━━━━━━\n"
             f"获得灵石：+{stone_reward:,}\n"
-            f"获得修为：+{exp_reward:,}"
+            f"获得修为：+{exp_reward:,}{item_msg}"
         )
     
     async def abandon_bounty(self, player: Player) -> Tuple[bool, str]:
@@ -143,3 +196,37 @@ class BountyManager:
         
         await self.db.ext.cancel_bounty(player.user_id)
         return True, f"已放弃悬赏：{active['bounty_name']}"
+    
+    async def _roll_bounty_items(self, player: Player, bounty_type: str) -> List[Tuple[str, int]]:
+        """
+        根据悬赏类型随机掉落物品
+        
+        Args:
+            player: 玩家对象
+            bounty_type: 悬赏类型
+            
+        Returns:
+            掉落物品列表 [(物品名, 数量), ...]
+        """
+        dropped_items = []
+        
+        # 获取对应类型的掉落表
+        drop_table = BOUNTY_ITEM_REWARDS.get(bounty_type, BOUNTY_ITEM_REWARDS["gather"])
+        
+        # 悬赏完成70%概率获得物品
+        if random.randint(1, 100) > 70:
+            return dropped_items
+        
+        # 加权随机选择物品
+        total_weight = sum(item["weight"] for item in drop_table)
+        roll = random.randint(1, total_weight)
+        
+        current_weight = 0
+        for item in drop_table:
+            current_weight += item["weight"]
+            if roll <= current_weight:
+                count = random.randint(item["min"], item["max"])
+                dropped_items.append((item["name"], count))
+                break
+        
+        return dropped_items

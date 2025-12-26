@@ -5,21 +5,48 @@
 
 import random
 import time
-from typing import Tuple, List, Optional, Dict
+from typing import Tuple, List, Optional, Dict, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models_extended import Rift, UserStatus
 from ..models import Player
+
+if TYPE_CHECKING:
+    from ..core import StorageRingManager
 
 
 class RiftManager:
     """秘境系统管理器"""
     
     # 默认秘境探索时长（秒）
-    DEFAULT_DURATION = 1800 
+    DEFAULT_DURATION = 1800
     
-    def __init__(self, db: DataBase, config_manager=None):
+    # 秘境物品掉落表（按秘境等级分组）
+    RIFT_DROP_TABLE = {
+        1: [  # 低级秘境
+            {"name": "灵草", "weight": 40, "min": 2, "max": 5},
+            {"name": "精铁", "weight": 30, "min": 1, "max": 3},
+            {"name": "灵石碎片", "weight": 30, "min": 3, "max": 8},
+        ],
+        2: [  # 中级秘境
+            {"name": "灵草", "weight": 30, "min": 3, "max": 7},
+            {"name": "玄铁", "weight": 25, "min": 2, "max": 4},
+            {"name": "灵兽毛皮", "weight": 20, "min": 1, "max": 3},
+            {"name": "功法残页", "weight": 15, "min": 1, "max": 1},
+            {"name": "秘境精华", "weight": 10, "min": 1, "max": 2},
+        ],
+        3: [  # 高级秘境
+            {"name": "玄铁", "weight": 25, "min": 3, "max": 6},
+            {"name": "星辰石", "weight": 20, "min": 2, "max": 4},
+            {"name": "灵兽内丹", "weight": 20, "min": 1, "max": 2},
+            {"name": "功法残页", "weight": 20, "min": 1, "max": 2},
+            {"name": "天材地宝", "weight": 15, "min": 1, "max": 1},
+        ],
+    }
+    
+    def __init__(self, db: DataBase, config_manager=None, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
         self.config_manager = config_manager
+        self.storage_ring_manager = storage_ring_manager
         self.config = config_manager.rift_config if config_manager else {}
         self.explore_duration = self.config.get("default_duration", self.DEFAULT_DURATION)
     
@@ -151,20 +178,37 @@ class RiftManager:
         
         # 随机事件
         events = [
-            "你发现了一处灵泉，修为大增！",
-            "你在秘境中击败了一只妖兽！",
-            "你找到了一个隐藏的宝箱！",
-            "你领悟了一些修炼心得。",
-            "你在秘境中遇到了前辈留下的传承！"
+            {"desc": "你发现了一处灵泉，修为大增！", "item_chance": 70},
+            {"desc": "你在秘境中击败了一只妖兽！", "item_chance": 80},
+            {"desc": "你找到了一个隐藏的宝箱！", "item_chance": 100},
+            {"desc": "你领悟了一些修炼心得。", "item_chance": 40},
+            {"desc": "你在秘境中遇到了前辈留下的传承！", "item_chance": 90}
         ]
         event = random.choice(events)
         
-        # 5. 应用奖励
+        # 5. 物品掉落（根据玩家境界确定秘境等级）
+        dropped_items = []
+        item_msg = ""
+        if self.storage_ring_manager:
+            rift_level = self._get_rift_level_by_player(player)
+            dropped_items = await self._roll_rift_drops(player, rift_level, event["item_chance"])
+            if dropped_items:
+                item_lines = []
+                for item_name, count in dropped_items:
+                    success, _ = await self.storage_ring_manager.store_item(player, item_name, count, silent=True)
+                    if success:
+                        item_lines.append(f"  · {item_name} x{count}")
+                    else:
+                        item_lines.append(f"  · {item_name} x{count}（储物戒已满，丢失）")
+                if item_lines:
+                    item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
+        
+        # 6. 应用奖励
         player.experience += exp_reward
         player.gold += gold_reward
         await self.db.update_player(player)
         
-        # 6. 清除CD
+        # 7. 清除CD
         await self.db.ext.set_user_free(user_id)
         
         msg = f"""
@@ -172,16 +216,17 @@ class RiftManager:
 ║    探索完成    ║
 ╚══════════════════════╝
 
-{event}
+{event["desc"]}
 
 获得修为：+{exp_reward}
-获得灵石：+{gold_reward}
+获得灵石：+{gold_reward}{item_msg}
         """.strip()
         
         reward_data = {
             "exp": exp_reward,
             "gold": gold_reward,
-            "event": event
+            "event": event["desc"],
+            "items": dropped_items
         }
         
         return True, msg, reward_data
@@ -210,3 +255,59 @@ class RiftManager:
         await self.db.ext.set_user_free(user_id)
         
         return True, "✅ 你已退出秘境，本次探索未获得任何奖励。"
+    
+    def _get_rift_level_by_player(self, player: Player) -> int:
+        """根据玩家境界确定秘境等级"""
+        level_index = player.level_index
+        if level_index <= 5:
+            return 1  # 低级秘境
+        elif level_index <= 12:
+            return 2  # 中级秘境
+        else:
+            return 3  # 高级秘境
+    
+    async def _roll_rift_drops(self, player: Player, rift_level: int, item_chance: int) -> List[Tuple[str, int]]:
+        """
+        根据秘境等级随机掉落物品
+        
+        Args:
+            player: 玩家对象
+            rift_level: 秘境等级 (1-3)
+            item_chance: 掉落概率
+            
+        Returns:
+            掉落物品列表 [(物品名, 数量), ...]
+        """
+        dropped_items = []
+        
+        # 检查是否触发物品掉落
+        if random.randint(1, 100) > item_chance:
+            return dropped_items
+        
+        # 获取对应等级的掉落表
+        drop_table = self.RIFT_DROP_TABLE.get(rift_level, self.RIFT_DROP_TABLE[1])
+        
+        # 加权随机选择物品（秘境保证至少掉落1件）
+        total_weight = sum(item["weight"] for item in drop_table)
+        roll = random.randint(1, total_weight)
+        
+        current_weight = 0
+        for item in drop_table:
+            current_weight += item["weight"]
+            if roll <= current_weight:
+                count = random.randint(item["min"], item["max"])
+                dropped_items.append((item["name"], count))
+                break
+        
+        # 高级秘境有50%概率额外掉落一件
+        if rift_level >= 2 and random.randint(1, 100) <= 50:
+            roll = random.randint(1, total_weight)
+            current_weight = 0
+            for item in drop_table:
+                current_weight += item["weight"]
+                if roll <= current_weight:
+                    count = random.randint(item["min"], item["max"])
+                    dropped_items.append((item["name"], count))
+                    break
+        
+        return dropped_items

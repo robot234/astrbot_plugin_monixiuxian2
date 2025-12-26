@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 16  # v16: Phase 4 扩展功能（洞天福地、灵田、双修、灵眼）
+LATEST_DB_VERSION = 17  # v17: 赠予请求持久化
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -462,6 +462,22 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             scheduled_time INTEGER NOT NULL DEFAULT 0
         )
     """)
+    
+    # 创建赠予请求表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS pending_gifts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receiver_id TEXT NOT NULL,
+            sender_id TEXT NOT NULL,
+            sender_name TEXT NOT NULL DEFAULT '',
+            item_name TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_expires ON pending_gifts(expires_at)")
 
     logger.info("数据库表已创建完成（v2 - 完整修仙系统）")
 
@@ -757,3 +773,28 @@ async def _migrate_to_v16(conn: aiosqlite.Connection, config_manager: ConfigMana
     
     await conn.commit()
     logger.info("v16迁移完成：Phase 4 扩展功能（洞天福地、灵田、双修、灵眼）")
+
+
+@migration(17)
+async def _migrate_to_v17(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v17 - 赠予请求持久化"""
+    logger.info("开始迁移到v17：赠予请求持久化")
+    
+    # 创建赠予请求表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS pending_gifts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receiver_id TEXT NOT NULL,
+            sender_id TEXT NOT NULL,
+            sender_name TEXT NOT NULL DEFAULT '',
+            item_name TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_expires ON pending_gifts(expires_at)")
+    
+    await conn.commit()
+    logger.info("v17迁移完成：赠予请求持久化")

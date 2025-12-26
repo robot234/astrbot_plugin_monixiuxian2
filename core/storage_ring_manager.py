@@ -242,14 +242,26 @@ class StorageRingManager:
         old_ring = player.storage_ring
         old_capacity = self.get_ring_capacity(old_ring)
         new_capacity = ring_config.get("capacity", 20)
+        
+        # 检查价格并扣除灵石
+        price = ring_config.get("price", 0)
+        if price > 0:
+            if player.gold < price:
+                return False, (
+                    f"❌ 灵石不足！\n"
+                    f"【{new_ring_name}】需要 {price:,} 灵石\n"
+                    f"你当前拥有：{player.gold:,} 灵石"
+                )
+            player.gold -= price
 
         player.storage_ring = new_ring_name
         await self.db.update_player(player)
 
+        cost_msg = f"\n消耗灵石：{price:,}" if price > 0 else ""
         return True, (
             f"储物戒升级成功！\n"
             f"【{old_ring}】({old_capacity}格) → 【{new_ring_name}】({new_capacity}格)\n"
-            f"品级：{ring_config.get('rank', '未知')}"
+            f"品级：{ring_config.get('rank', '未知')}{cost_msg}"
         )
 
     def get_storage_ring_info(self, player: Player) -> dict:

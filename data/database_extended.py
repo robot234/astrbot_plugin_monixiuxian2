@@ -596,3 +596,125 @@ class DatabaseExtended:
             (key, value, int(time.time()), value, int(time.time()))
         )
         await self.conn.commit()
+    
+    # ===== 赠予请求系统 CRUD =====
+    
+    async def create_pending_gift(self, receiver_id: str, sender_id: str, sender_name: str,
+                                   item_name: str, count: int, expires_hours: int = 24) -> int:
+        """创建赠予请求
+        
+        Args:
+            receiver_id: 接收者ID
+            sender_id: 发送者ID
+            sender_name: 发送者名称
+            item_name: 物品名称
+            count: 物品数量
+            expires_hours: 过期时间（小时），默认24小时
+            
+        Returns:
+            新创建的赠予请求ID
+        """
+        import time
+        now = int(time.time())
+        expires_at = now + expires_hours * 3600
+        
+        await self.conn.execute(
+            """
+            INSERT INTO pending_gifts (
+                receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (receiver_id, sender_id, sender_name, item_name, count, now, expires_at)
+        )
+        await self.conn.commit()
+        
+        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+    
+    async def get_pending_gift(self, receiver_id: str) -> Optional[dict]:
+        """获取接收者的待处理赠予请求（最新的一个）"""
+        import time
+        now = int(time.time())
+        
+        # 先清理过期的请求
+        await self.cleanup_expired_gifts()
+        
+        async with self.conn.execute(
+            """
+            SELECT id, receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
+            FROM pending_gifts 
+            WHERE receiver_id = ? AND expires_at > ?
+            ORDER BY created_at DESC 
+            LIMIT 1
+            """,
+            (receiver_id, now)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0],
+                    "receiver_id": row[1],
+                    "sender_id": row[2],
+                    "sender_name": row[3],
+                    "item_name": row[4],
+                    "count": row[5],
+                    "created_at": row[6],
+                    "expires_at": row[7]
+                }
+            return None
+    
+    async def get_all_pending_gifts(self, receiver_id: str) -> List[dict]:
+        """获取接收者的所有待处理赠予请求"""
+        import time
+        now = int(time.time())
+        
+        async with self.conn.execute(
+            """
+            SELECT id, receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
+            FROM pending_gifts 
+            WHERE receiver_id = ? AND expires_at > ?
+            ORDER BY created_at DESC
+            """,
+            (receiver_id, now)
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "receiver_id": row[1],
+                    "sender_id": row[2],
+                    "sender_name": row[3],
+                    "item_name": row[4],
+                    "count": row[5],
+                    "created_at": row[6],
+                    "expires_at": row[7]
+                }
+                for row in rows
+            ]
+    
+    async def delete_pending_gift(self, gift_id: int):
+        """删除赠予请求"""
+        await self.conn.execute(
+            "DELETE FROM pending_gifts WHERE id = ?",
+            (gift_id,)
+        )
+        await self.conn.commit()
+    
+    async def delete_pending_gift_by_receiver(self, receiver_id: str):
+        """删除接收者的所有赠予请求"""
+        await self.conn.execute(
+            "DELETE FROM pending_gifts WHERE receiver_id = ?",
+            (receiver_id,)
+        )
+        await self.conn.commit()
+    
+    async def cleanup_expired_gifts(self):
+        """清理过期的赠予请求"""
+        import time
+        now = int(time.time())
+        await self.conn.execute(
+            "DELETE FROM pending_gifts WHERE expires_at < ?",
+            (now,)
+        )
+        await self.conn.commit()

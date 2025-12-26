@@ -4,10 +4,14 @@
 """
 
 import random
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Optional, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models import Player
 from ..models_extended import UserStatus
+
+if TYPE_CHECKING:
+    from ..config_manager import ConfigManager
+    from ..core import StorageRingManager
 
 
 class AlchemyManager:
@@ -62,8 +66,10 @@ class AlchemyManager:
         },
     }
     
-    def __init__(self, db: DataBase, config_manager=None):
+    def __init__(self, db: DataBase, config_manager: "ConfigManager" = None, storage_ring_manager: "StorageRingManager" = None):
         self.db = db
+        self.config_manager = config_manager
+        self.storage_ring_manager = storage_ring_manager
         self.config = config_manager.alchemy_config if config_manager else {}
         
         # 加载配方（处理key类型和字段兼容性）
@@ -175,13 +181,42 @@ class AlchemyManager:
         if player.level_index < recipe["level_required"]:
             return False, f"❌ 炼制{recipe['name']}需要达到境界等级 {recipe['level_required']}！", None
         
-        # 4. 检查材料（简化版本，只检查灵石）
-        required_gold = recipe["materials"].get("灵石", 0)
-        if player.gold < required_gold:
-            return False, f"❌ 灵石不足！需要 {required_gold} 灵石。", None
+        # 4. 检查所有材料
+        materials = recipe["materials"]
+        missing_materials = []
         
-        # 5. 扣除材料
+        # 检查灵石
+        required_gold = materials.get("灵石", 0)
+        if player.gold < required_gold:
+            missing_materials.append(f"灵石（需要{required_gold}，拥有{player.gold}）")
+        
+        # 检查储物戒中的材料
+        if self.storage_ring_manager:
+            for material_name, required_count in materials.items():
+                if material_name == "灵石":
+                    continue
+                current_count = self.storage_ring_manager.get_item_count(player, material_name)
+                if current_count < required_count:
+                    missing_materials.append(f"{material_name}（需要{required_count}，拥有{current_count}）")
+        else:
+            # 没有储物戒管理器时，跳过其他材料检查（兼容旧逻辑）
+            pass
+        
+        if missing_materials:
+            return False, f"❌ 材料不足！\n" + "\n".join(f"  · {m}" for m in missing_materials), None
+        
+        # 5. 扣除所有材料
         player.gold -= required_gold
+        
+        # 扣除储物戒中的材料
+        consumed_materials = []
+        if self.storage_ring_manager:
+            for material_name, required_count in materials.items():
+                if material_name == "灵石":
+                    continue
+                success, _ = await self.storage_ring_manager.retrieve_item(player, material_name, required_count)
+                if success:
+                    consumed_materials.append(f"{material_name}×{required_count}")
         
         # 6. 判断成功率
         success_rate = recipe["success_rate"]
@@ -222,6 +257,13 @@ class AlchemyManager:
             
             await self.db.update_player(player)
             
+            # 构建消耗材料显示
+            cost_lines = []
+            if required_gold > 0:
+                cost_lines.append(f"灵石 -{required_gold}")
+            cost_lines.extend(consumed_materials)
+            cost_str = "、".join(cost_lines) if cost_lines else "无"
+            
             msg = f"""
 ╔══════════════════════╗
 ║    炼丹成功！    ║
@@ -231,7 +273,7 @@ class AlchemyManager:
 
 {effect_msg}
 
-消耗：灵石 -{required_gold}
+消耗：{cost_str}
 成功率：{final_success_rate}%
             """.strip()
             
@@ -239,11 +281,19 @@ class AlchemyManager:
                 "success": True,
                 "pill_name": recipe["name"],
                 "effect": effect_msg,
-                "cost": required_gold
+                "cost": required_gold,
+                "materials_consumed": consumed_materials
             }
         else:
             # 炼制失败
             await self.db.update_player(player)
+            
+            # 构建消耗材料显示
+            cost_lines = []
+            if required_gold > 0:
+                cost_lines.append(f"灵石 -{required_gold}")
+            cost_lines.extend(consumed_materials)
+            cost_str = "、".join(cost_lines) if cost_lines else "无"
             
             msg = f"""
 ╔══════════════════════╗
@@ -253,7 +303,7 @@ class AlchemyManager:
 炼制【{recipe['name']}】失败了...
 
 材料已消耗
-消耗：灵石 -{required_gold}
+消耗：{cost_str}
 成功率：{final_success_rate}%
 
 再接再厉！
@@ -262,7 +312,8 @@ class AlchemyManager:
             result_data = {
                 "success": False,
                 "pill_name": recipe["name"],
-                "cost": required_gold
+                "cost": required_gold,
+                "materials_consumed": consumed_materials
             }
         
         return True, msg, result_data
