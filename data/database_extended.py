@@ -488,8 +488,29 @@ class DatabaseExtended:
     
     # ========== Phase 2: 悬赏令系统 CRUD ==========
     
+    async def ensure_bounty_tables(self):
+        """确保悬赏系统表存在（运行时检查）"""
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS bounty_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                bounty_id INTEGER NOT NULL,
+                bounty_name TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_count INTEGER NOT NULL,
+                current_progress INTEGER NOT NULL DEFAULT 0,
+                rewards TEXT NOT NULL DEFAULT '{}',
+                start_time INTEGER NOT NULL,
+                expire_time INTEGER NOT NULL,
+                status INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_bounty_user ON bounty_tasks(user_id)")
+        await self.conn.commit()
+    
     async def get_active_bounty(self, user_id: str) -> Optional[dict]:
         """获取用户当前进行中的悬赏任务"""
+        await self.ensure_bounty_tables()  # 确保表存在
         async with self.conn.execute(
             "SELECT * FROM bounty_tasks WHERE user_id = ? AND status = 1",
             (user_id,)
