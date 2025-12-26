@@ -227,6 +227,14 @@ class PlayerHandler:
         if player.state == "修炼中":
             yield event.plain_result("道友已在闭关中，请勿重复进入。")
             return
+        
+        # 检查是否在其他活动中（历练、秘境探索等）
+        user_cd = await self.db.ext.get_user_cd(player.user_id)
+        if user_cd and user_cd.type != 0:
+            status_names = {0: "空闲", 1: "闭关中", 2: "历练中", 3: "探索秘境中"}
+            current_status = status_names.get(user_cd.type, "忙碌中")
+            yield event.plain_result(f"❌ 道友当前正{current_status}，无法闭关修炼！")
+            return
 
         # 记录闭关开始时间
         player.state = "修炼中"
