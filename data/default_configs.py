@@ -38,8 +38,45 @@ RIFT_CONFIG = {
 
 ALCHEMY_CONFIG = {
     "recipes": {
-        "1": {"name": "聚气丹", "level": 0, "cost": {"灵草": 3, "灵石": 100}, "success": 80},
-        "2": {"name": "筑基丹", "level": 2, "cost": {"灵草": 5, "灵石": 500}, "success": 60},
-        "3": {"name": "金丹", "level": 5, "cost": {"灵草": 10, "灵石": 2000}, "success": 40},
+        "1": {
+            "name": "聚气丹",
+            "level_required": 0,
+            "materials": {"灵草": 3, "灵石": 100},
+            "success_rate": 80,
+            "effect": {"type": "exp", "value": 1000},
+            "desc": "增加1000修为"
+        },
+        "2": {
+            "name": "筑基丹",
+            "level_required": 2,
+            "materials": {"灵草": 5, "灵石": 500},
+            "success_rate": 60,
+            "effect": {"type": "exp", "value": 5000},
+            "desc": "增加5000修为"
+        },
+        "3": {
+            "name": "金丹",
+            "level_required": 5,
+            "materials": {"灵草": 10, "灵石": 2000},
+            "success_rate": 40,
+            "effect": {"type": "exp", "value": 20000},
+            "desc": "增加20000修为"
+        },
+        "4": {
+            "name": "回春丹",
+            "level_required": 1,
+            "materials": {"灵草": 2, "灵石": 200},
+            "success_rate": 70,
+            "effect": {"type": "hp_restore", "value": 50},
+            "desc": "恢复50%气血"
+        },
+        "5": {
+            "name": "聚灵丹",
+            "level_required": 1,
+            "materials": {"灵草": 2, "灵石": 200},
+            "success_rate": 70,
+            "effect": {"type": "mp_restore", "value": 50},
+            "desc": "恢复50%真元"
+        },
     }
 }

@@ -66,14 +66,40 @@ class AlchemyManager:
         self.db = db
         self.config = config_manager.alchemy_config if config_manager else {}
         
-        # 加载配方（处理key类型）
+        # 加载配方（处理key类型和字段兼容性）
         raw_recipes = self.config.get("recipes", self.PILL_RECIPES)
         self.recipes = {}
         for k, v in raw_recipes.items():
             try:
-                self.recipes[int(k)] = v
+                recipe_id = int(k)
+                # 标准化配方字段（兼容旧格式）
+                self.recipes[recipe_id] = self._normalize_recipe(recipe_id, v)
             except ValueError:
                 continue
+    
+    def _normalize_recipe(self, recipe_id: int, recipe: Dict) -> Dict:
+        """标准化配方字段，兼容不同格式的配置"""
+        # 默认效果映射
+        default_effects = {
+            "聚气丹": {"type": "exp", "value": 1000, "desc": "增加1000修为"},
+            "筑基丹": {"type": "exp", "value": 5000, "desc": "增加5000修为"},
+            "金丹": {"type": "exp", "value": 20000, "desc": "增加20000修为"},
+            "回春丹": {"type": "hp_restore", "value": 50, "desc": "恢复50%气血"},
+            "聚灵丹": {"type": "mp_restore", "value": 50, "desc": "恢复50%真元"},
+        }
+        
+        name = recipe.get("name", f"丹药{recipe_id}")
+        effect_info = default_effects.get(name, {"type": "exp", "value": 1000, "desc": "增加修为"})
+        
+        return {
+            "id": recipe.get("id", recipe_id),
+            "name": name,
+            "level_required": recipe.get("level_required", recipe.get("level", 0)),
+            "materials": recipe.get("materials", recipe.get("cost", {})),
+            "success_rate": recipe.get("success_rate", recipe.get("success", 50)),
+            "effect": recipe.get("effect", {"type": effect_info["type"], "value": effect_info["value"]}),
+            "desc": recipe.get("desc", effect_info["desc"])
+        }
     
     async def get_available_recipes(self, user_id: str) -> Tuple[bool, str]:
         """
