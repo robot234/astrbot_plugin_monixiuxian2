@@ -83,6 +83,7 @@ CMD_RIFT_COMPLETE = "完成探索"
 CMD_ADVENTURE_START = "开始历练"
 CMD_ADVENTURE_COMPLETE = "完成历练"
 CMD_ADVENTURE_STATUS = "历练状态"
+CMD_ADVENTURE_INFO = "历练信息"
 
 # 炼丹系统指令
 CMD_ALCHEMY_RECIPES = "丹药配方"
@@ -115,7 +116,7 @@ CMD_IMPART_RANKING = "传承排行"
     "astrbot_plugin_monixiuxian2",
     "linjianyan0229",
     "基于astrbot框架的文字修仙游戏（重构版）",
-    "2.3.0",
+    "2.3.1",
     "https://github.com/xiaojuwa/astrbot_plugin_monixiuxian2"
 )
 class XiuXianPlugin(Star):
@@ -674,6 +675,14 @@ class XiuXianPlugin(Star):
             await self._send_access_denied_message(event)
             return
         async for r in self.adventure_handlers.handle_adventure_status(event):
+            yield r
+
+    @filter.command(CMD_ADVENTURE_INFO, "查看历练系统说明")
+    async def handle_adventure_info(self, event: AstrMessageEvent):
+        if not self._check_access(event):
+            await self._send_access_denied_message(event)
+            return
+        async for r in self.adventure_handlers.handle_adventure_info(event):
             yield r
 
     # ================= 炼丹指令 =================

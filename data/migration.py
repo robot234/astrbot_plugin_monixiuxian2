@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 14  # Phase 2: 灵石银行、悬赏令系统
+LATEST_DB_VERSION = 15  # v15: 默认秘境数据
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -655,3 +655,31 @@ async def _migrate_to_v14(conn: aiosqlite.Connection, config_manager: ConfigMana
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bounty_user ON bounty_tasks(user_id)")
     
     logger.info("v14迁移完成：Phase 2 经济与任务系统")
+
+
+@migration(15)
+async def _migrate_to_v15(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v15 - 添加默认秘境数据"""
+    logger.info("开始迁移到v15：添加默认秘境数据")
+    
+    # 插入默认秘境数据
+    import json
+    default_rifts = [
+        (1, "青云秘境", 1, 0, json.dumps({"exp": [500, 1500], "gold": [200, 800]})),
+        (2, "落日峡谷", 2, 3, json.dumps({"exp": [1500, 4000], "gold": [500, 2000]})),
+        (3, "万妖洞", 3, 6, json.dumps({"exp": [3000, 8000], "gold": [1000, 5000]})),
+        (4, "玄冰地宫", 4, 10, json.dumps({"exp": [5000, 15000], "gold": [2000, 10000]})),
+        (5, "上古遗迹", 5, 15, json.dumps({"exp": [10000, 30000], "gold": [5000, 20000]})),
+    ]
+    
+    for rift in default_rifts:
+        try:
+            await conn.execute(
+                "INSERT OR IGNORE INTO rifts (rift_id, rift_name, rift_level, required_level, rewards) VALUES (?, ?, ?, ?, ?)",
+                rift
+            )
+        except:
+            pass
+    
+    await conn.commit()
+    logger.info("v15迁移完成：已添加5个默认秘境")
