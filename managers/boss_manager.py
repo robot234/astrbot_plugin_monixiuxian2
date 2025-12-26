@@ -8,7 +8,7 @@ import random
 import time
 from typing import Tuple, Dict, Optional
 from ..data.data_manager import DataBase
-from ..models_extended import Boss
+from ..models_extended import Boss, UserStatus
 from ..models import Player
 from .combat_manager import CombatManager, CombatStats
 
@@ -149,7 +149,7 @@ ATK：{atk}
             await self.db.ext.create_user_cd(user_id)
             user_cd = await self.db.ext.get_user_cd(user_id)
         
-        if user_cd.type != 0:
+        if user_cd.type != UserStatus.IDLE:
             return False, "❌ 你当前正忙，无法挑战Boss！", None
         
         # 4. 计算玩家战斗属性

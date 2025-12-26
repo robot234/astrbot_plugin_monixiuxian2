@@ -7,7 +7,7 @@ import random
 import time
 from typing import Tuple, List, Optional, Dict
 from ..data.data_manager import DataBase
-from ..models_extended import Rift
+from ..models_extended import Rift, UserStatus
 from ..models import Player
 
 
@@ -96,8 +96,8 @@ class RiftManager:
             await self.db.ext.create_user_cd(user_id)
             user_cd = await self.db.ext.get_user_cd(user_id)
         
-        if user_cd.type != 0:
-            return False, "❌ 你当前正忙，无法探索秘境！"
+        if user_cd.type != UserStatus.IDLE:
+            return False, f"❌ 你当前正{UserStatus.get_name(user_cd.type)}，无法探索秘境！"
         
         # 3. 检查秘境
         rift = await self.db.ext.get_rift_by_id(rift_id)
@@ -111,7 +111,7 @@ class RiftManager:
         
         # 5. 设置探索状态
         scheduled_time = int(time.time()) + self.explore_duration
-        await self.db.ext.set_user_busy(user_id, 3, scheduled_time)  # 3=探索秘境
+        await self.db.ext.set_user_busy(user_id, UserStatus.EXPLORING, scheduled_time)
         
         return True, f"✨ 你进入了『{rift.rift_name}』！探索需要 {self.explore_duration//60} 分钟。\n使用 /完成探索 领取奖励"
     
@@ -135,7 +135,7 @@ class RiftManager:
         
         # 2. 检查CD状态
         user_cd = await self.db.ext.get_user_cd(user_id)
-        if not user_cd or user_cd.type != 3:
+        if not user_cd or user_cd.type != UserStatus.EXPLORING:
             return False, "❌ 你当前不在探索秘境！", None
         
         # 3. 检查时间
@@ -185,3 +185,28 @@ class RiftManager:
         }
         
         return True, msg, reward_data
+    
+    async def exit_rift(self, user_id: str) -> Tuple[bool, str]:
+        """
+        退出秘境（放弃探索）
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            (成功标志, 消息)
+        """
+        # 1. 检查用户
+        player = await self.db.get_player_by_id(user_id)
+        if not player:
+            return False, "❌ 你还未踏入修仙之路！"
+        
+        # 2. 检查CD状态
+        user_cd = await self.db.ext.get_user_cd(user_id)
+        if not user_cd or user_cd.type != UserStatus.EXPLORING:
+            return False, "❌ 你当前不在探索秘境！"
+        
+        # 3. 清除CD状态
+        await self.db.ext.set_user_free(user_id)
+        
+        return True, "✅ 你已退出秘境，本次探索未获得任何奖励。"

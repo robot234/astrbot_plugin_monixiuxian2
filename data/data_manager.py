@@ -239,7 +239,7 @@ class DataBase:
             # 过滤掉 Player 模型中不存在的字段（兼容旧数据库/迁移未完成的情况）
             return [Player(**{k: v for k, v in dict(row).items() if k in PLAYER_FIELDS}) for row in rows]
 
-    # ========== 商店数据操作 ==========
+    # ===== 商店数据操作 =====
 
     async def get_shop_data(self, shop_id: str = "global") -> Tuple[int, List[dict]]:
         """获取商店数据

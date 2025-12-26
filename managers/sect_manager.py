@@ -5,9 +5,10 @@
 """
 
 import random
+import time
 from typing import Tuple, List, Optional, Dict
 from ..data.data_manager import DataBase
-from ..models_extended import Sect
+from ..models_extended import Sect, UserStatus
 from ..models import Player
 
 
@@ -475,7 +476,7 @@ class SectManager:
         current_time = int(time.time())
         # 假设 CD 记录在 type=4, scheduled_time 为下次可用时间
         # 这里重用 set_user_busy 逻辑，但任务通常是瞬时的，只设冷却
-        if user_cd.type == 4 and current_time < user_cd.scheduled_time:
+        if user_cd.type == UserStatus.SECT_TASK and current_time < user_cd.scheduled_time:
             remaining = user_cd.scheduled_time - current_time
             return False, f"❌ 宗门任务冷却中！还需 {remaining//60} 分钟。"
 

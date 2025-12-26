@@ -1,11 +1,33 @@
 # models.py - 新增模型定义
 
 from dataclasses import dataclass
+from enum import IntEnum
 from typing import TYPE_CHECKING, List, Optional
 import json
 
 if TYPE_CHECKING:
     from .config_manager import ConfigManager
+
+
+class UserStatus(IntEnum):
+    """用户状态枚举"""
+    IDLE = 0           # 空闲
+    CULTIVATING = 1    # 闭关中
+    ADVENTURING = 2    # 历练中
+    EXPLORING = 3      # 探索秘境中
+    SECT_TASK = 4      # 宗门任务中
+    
+    @classmethod
+    def get_name(cls, status: int) -> str:
+        """获取状态名称"""
+        names = {
+            cls.IDLE: "空闲",
+            cls.CULTIVATING: "闭关中",
+            cls.ADVENTURING: "历练中",
+            cls.EXPLORING: "探索秘境中",
+            cls.SECT_TASK: "宗门任务中",
+        }
+        return names.get(status, "忙碌中")
 
 @dataclass
 class Sect:
@@ -121,6 +143,6 @@ class UserCd:
     """用户CD信息数据模型"""
     
     user_id: str  # 用户ID（主键）
-    type: int = 0  # CD类型：0无状态、1闭关中、2历练中、3探索秘境中
+    type: int = UserStatus.IDLE  # CD类型，参见 UserStatus 枚举
     create_time: int = 0  # 创建时间
     scheduled_time: int = 0  # 计划完成时间

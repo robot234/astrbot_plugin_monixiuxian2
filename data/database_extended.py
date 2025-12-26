@@ -17,7 +17,7 @@ class DatabaseExtended:
     def __init__(self, conn: aiosqlite.Connection):
         self.conn = conn
     
-    # ========== 宗门系统 CRUD ==========
+    # ===== 宗门系统 CRUD =====
     
     async def create_sect(self, sect: Sect):
         """创建宗门"""
@@ -137,7 +137,7 @@ class DatabaseExtended:
         )
         await self.conn.commit()
     
-    # ========== BuffInfo 系统 CRUD ==========
+    # ===== BuffInfo 系统 CRUD =====
     
     async def create_buff_info(self, user_id: str):
         """初始化用户的buff信息"""
@@ -196,7 +196,7 @@ class DatabaseExtended:
         )
         await self.conn.commit()
     
-    # ========== Boss 系统 CRUD ==========
+    # ===== Boss 系统 CRUD =====
     
     async def create_boss(self, boss: Boss) -> int:
         """创建Boss"""
@@ -265,7 +265,7 @@ class DatabaseExtended:
         )
         await self.conn.commit()
     
-    # ========== 秘境系统 CRUD ==========
+    # ===== 秘境系统 CRUD =====
     
     async def create_rift(self, rift: Rift) -> int:
         """创建秘境"""
@@ -302,7 +302,7 @@ class DatabaseExtended:
             rows = await cursor.fetchall()
             return [Rift(**dict(row)) for row in rows]
     
-    # ========== 传承系统 CRUD ==========
+    # ===== 传承系统 CRUD =====
     
     async def create_impart_info(self, user_id: str):
         """初始化用户传承信息"""
@@ -344,7 +344,7 @@ class DatabaseExtended:
         )
         await self.conn.commit()
     
-    # ========== 用户CD系统 CRUD ==========
+    # ===== 用户CD系统 CRUD =====
     
     async def create_user_cd(self, user_id: str):
         """初始化用户CD信息"""
@@ -402,7 +402,7 @@ class DatabaseExtended:
         """设置用户为空闲状态"""
         await self.set_user_busy(user_id, 0, 0)
     
-    # ========== Player扩展字段更新方法 ==========
+    # ===== Player扩展字段更新方法 =====
     
     async def update_player_hp_mp(self, user_id: str, hp: int, mp: int):
         """更新玩家HP和MP"""
@@ -459,7 +459,7 @@ class DatabaseExtended:
             PLAYER_FIELDS = {f.name for f in fields(Player)}
             return [Player(**{k: v for k, v in dict(row).items() if k in PLAYER_FIELDS}) for row in rows]
     
-    # ========== Phase 2: 灵石银行 CRUD ==========
+    # ===== Phase 2: 灵石银行 CRUD =====
     
     async def get_bank_account(self, user_id: str) -> Optional[dict]:
         """获取银行账户信息"""
@@ -486,7 +486,7 @@ class DatabaseExtended:
         )
         await self.conn.commit()
     
-    # ========== Phase 2: 悬赏令系统 CRUD ==========
+    # ===== Phase 2: 悬赏令系统 CRUD =====
     
     async def ensure_bounty_tables(self):
         """确保悬赏系统表存在（运行时检查）"""
@@ -560,5 +560,39 @@ class DatabaseExtended:
         await self.conn.execute(
             "UPDATE bounty_tasks SET status = 0 WHERE user_id = ? AND status = 1",
             (user_id,)
+        )
+        await self.conn.commit()
+    
+    # ===== 系统配置 CRUD =====
+    
+    async def ensure_system_config_table(self):
+        """确保系统配置表存在"""
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS system_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER DEFAULT 0
+            )
+        """)
+        await self.conn.commit()
+    
+    async def get_system_config(self, key: str) -> Optional[str]:
+        """获取系统配置"""
+        async with self.conn.execute(
+            "SELECT value FROM system_config WHERE key = ?",
+            (key,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+    
+    async def set_system_config(self, key: str, value: str):
+        """设置系统配置"""
+        import time
+        await self.conn.execute(
+            """
+            INSERT INTO system_config (key, value, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+            """,
+            (key, value, int(time.time()), value, int(time.time()))
         )
         await self.conn.commit()

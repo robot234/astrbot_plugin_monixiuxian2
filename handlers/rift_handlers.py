@@ -27,3 +27,9 @@ class RiftHandlers:
         user_id = event.get_sender_id()
         success, msg, _ = await self.rift_mgr.finish_exploration(user_id)
         yield event.plain_result(msg)
+    
+    async def handle_rift_exit(self, event: AstrMessageEvent):
+        """退出秘境"""
+        user_id = event.get_sender_id()
+        success, msg = await self.rift_mgr.exit_rift(user_id)
+        yield event.plain_result(msg)

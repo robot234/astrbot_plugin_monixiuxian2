@@ -14,6 +14,12 @@
         "type": "list",
         "default": [],
         "hint": "可以手动刷新商店的用户ID（字符串）。为空则不允许任何人手动刷新商店。"
+      },
+      "BOSS_ADMINS": {
+        "description": "Boss管理员名单",
+        "type": "list",
+        "default": [],
+        "hint": "可以手动生成Boss的用户ID（字符串）。为空则不允许任何人手动生成Boss。"
       }
     }
   },

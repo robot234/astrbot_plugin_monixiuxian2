@@ -9,6 +9,7 @@ import time
 from typing import Tuple, Dict, Optional
 from ..data.data_manager import DataBase
 from ..models import Player
+from ..models_extended import UserStatus
 
 
 class AdventureManager:
@@ -71,9 +72,8 @@ class AdventureManager:
             await self.db.ext.create_user_cd(user_id)
             user_cd = await self.db.ext.get_user_cd(user_id)
         
-        if user_cd.type != 0:
-            status_names = {0: "空闲", 1: "闭关中", 2: "历练中", 3: "探索秘境中"}
-            current_status = status_names.get(user_cd.type, "忙碌中")
+        if user_cd.type != UserStatus.IDLE:
+            current_status = UserStatus.get_name(user_cd.type)
             return False, f"❌ 你当前正{current_status}，无法开始历练！"
         
         # 3. 验证历练类型
@@ -85,7 +85,7 @@ class AdventureManager:
         
         # 4. 设置历练状态
         scheduled_time = int(time.time()) + duration
-        await self.db.ext.set_user_busy(user_id, 2, scheduled_time)  # 2=历练中
+        await self.db.ext.set_user_busy(user_id, UserStatus.ADVENTURING, scheduled_time)
         
         type_names = {"short": "短途", "medium": "中途", "long": "长途"}
         type_name = type_names.get(adventure_type, "中途")
@@ -109,7 +109,7 @@ class AdventureManager:
         
         # 2. 检查CD状态
         user_cd = await self.db.ext.get_user_cd(user_id)
-        if not user_cd or user_cd.type != 2:
+        if not user_cd or user_cd.type != UserStatus.ADVENTURING:
             return False, "❌ 你当前不在历练中！", None
         
         # 3. 检查时间
@@ -188,7 +188,7 @@ class AdventureManager:
             (成功标志, 消息)
         """
         user_cd = await self.db.ext.get_user_cd(user_id)
-        if not user_cd or user_cd.type != 2:
+        if not user_cd or user_cd.type != UserStatus.ADVENTURING:
             return False, "❌ 你当前不在历练中！"
         
         current_time = int(time.time())

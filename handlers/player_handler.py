@@ -7,6 +7,7 @@ from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import CultivationManager, PillManager
 from ..models import Player
+from ..models_extended import UserStatus
 from ..config_manager import ConfigManager
 from .utils import player_required
 
@@ -230,9 +231,8 @@ class PlayerHandler:
         
         # 检查是否在其他活动中（历练、秘境探索等）
         user_cd = await self.db.ext.get_user_cd(player.user_id)
-        if user_cd and user_cd.type != 0:
-            status_names = {0: "空闲", 1: "闭关中", 2: "历练中", 3: "探索秘境中"}
-            current_status = status_names.get(user_cd.type, "忙碌中")
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            current_status = UserStatus.get_name(user_cd.type)
             yield event.plain_result(f"❌ 道友当前正{current_status}，无法闭关修炼！")
             return
 

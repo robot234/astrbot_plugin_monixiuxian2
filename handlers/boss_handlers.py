@@ -1,4 +1,5 @@
 # handlers/boss_handlers.py
+from typing import Tuple, Optional, Dict, Any
 from astrbot.api.event import AstrMessageEvent
 from ..managers.boss_manager import BossManager
 from ..data.data_manager import DataBase
@@ -13,15 +14,25 @@ class BossHandlers:
         success, msg, _ = await self.boss_mgr.get_boss_info()
         yield event.plain_result(msg)
 
-    async def handle_boss_fight(self, event: AstrMessageEvent):
-        """挑战世界Boss"""
-        user_id = event.get_sender_id()
-        success, msg, _ = await self.boss_mgr.challenge_boss(user_id)
-        yield event.plain_result(msg)
+    async def handle_boss_fight(self, user_id: str) -> Tuple[bool, str, Optional[Dict[str, Any]]]:
+        """
+        挑战世界Boss
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            (成功标志, 消息, 战斗结果字典)
+        """
+        success, msg, battle_result = await self.boss_mgr.challenge_boss(user_id)
+        return success, msg, battle_result
     
-    # 管理员指令：生成BOSS（可选）
-    async def handle_spawn_boss(self, event: AstrMessageEvent):
-        """生成世界Boss (Admin)"""
-        # 这里应该加权限判断，暂时略过
-        success, msg, _ = await self.boss_mgr.auto_spawn_boss()
-        yield event.plain_result(msg)
+    async def handle_spawn_boss(self) -> Tuple[bool, str, Optional[Any]]:
+        """
+        生成世界Boss
+        
+        Returns:
+            (成功标志, 消息, Boss对象)
+        """
+        success, msg, boss = await self.boss_mgr.auto_spawn_boss()
+        return success, msg, boss
