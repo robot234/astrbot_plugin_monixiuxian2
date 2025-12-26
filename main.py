@@ -1,9 +1,8 @@
 import asyncio
 from pathlib import Path
 from astrbot.api import logger, AstrBotConfig
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from .data import DataBase, MigrationManager
 from .config_manager import ConfigManager
 from .handlers import (
@@ -138,13 +137,6 @@ CMD_SPIRIT_EYE_CLAIM = "抢占灵眼"
 CMD_SPIRIT_EYE_COLLECT = "灵眼收取"
 CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
 
-@register(
-    "astrbot_plugin_monixiuxian2",
-    "linjianyan0229",
-    "基于astrbot框架的文字修仙游戏（重构版）",
-    "2.4.4",
-    "https://github.com/xiaojuwa/astrbot_plugin_monixiuxian2"
-)
 class XiuXianPlugin(Star):
     """修仙插件 - 文字修仙游戏"""
 
@@ -156,7 +148,7 @@ class XiuXianPlugin(Star):
 
         files_config = self.config.get("FILES", {})
         db_filename = files_config.get("DATABASE_FILE", "xiuxian_data_v2.db")
-        plugin_data_path = Path(get_astrbot_data_path()) / "plugin_data" / "astrbot_plugin_monixiuxian2"
+        plugin_data_path = StarTools.get_data_dir("astrbot_plugin_monixiuxian2")
         plugin_data_path.mkdir(parents=True, exist_ok=True)
         db_path = plugin_data_path / db_filename
         self.db = DataBase(str(db_path))

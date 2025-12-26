@@ -259,7 +259,7 @@ class DataBase:
                 last_refresh_time = row[0]
                 try:
                     current_items = json.loads(row[1])
-                except:
+                except json.JSONDecodeError:
                     current_items = []
                 return last_refresh_time, current_items
             return 0, []
@@ -310,7 +310,7 @@ class DataBase:
             last_refresh_time = row[0]
             try:
                 current_items = json.loads(row[1])
-            except:
+            except json.JSONDecodeError:
                 current_items = []
 
             target_index = -1
@@ -364,7 +364,7 @@ class DataBase:
             last_refresh_time = row[0]
             try:
                 current_items = json.loads(row[1])
-            except:
+            except json.JSONDecodeError:
                 current_items = []
 
             for item in current_items:
