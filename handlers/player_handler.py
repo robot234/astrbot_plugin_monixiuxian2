@@ -169,9 +169,8 @@ class PlayerHandler:
         dao_hao = player.user_name if player.user_name else display_name
         
         reply_msg = (
-            f"╔══════════════════════╗\n"
-            f"║ 道友 {dao_hao} 的信息\n"
-            f"╚══════════════════════╝\n"
+            f"📋 道友 {dao_hao} 的信息\n"
+            f"━━━━━━━━━━━━━━━\n"
             f"\n"
             f"【基本信息】\n"
             f"  道号：{dao_hao}\n"
@@ -216,7 +215,7 @@ class PlayerHandler:
             f"【宗门信息】\n"
             f"  所在宗门：{sect_name}\n"
             f"  宗门职位：{position_name}\n"
-            f"══════════════════════"
+            f"━━━━━━━━━━━━━━━"
         )
         
         yield event.plain_result(reply_msg)

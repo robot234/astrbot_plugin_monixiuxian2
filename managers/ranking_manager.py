@@ -33,9 +33,8 @@ class RankingManager:
         # 按修为排序
         sorted_players = sorted(all_players, key=lambda p: p.experience, reverse=True)[:limit]
         
-        msg = "╔══════════════════════╗\n"
-        msg += "║    境界排行榜    ║\n"
-        msg += "╚══════════════════════╝\n\n"
+        msg = "📊 境界排行榜\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         
         for idx, player in enumerate(sorted_players, 1):
             name = player.user_name if player.user_name else f"道友{player.user_id[:6]}"
@@ -80,9 +79,8 @@ class RankingManager:
         # 按战力排序
         sorted_players = sorted(player_power, key=lambda x: x[1], reverse=True)[:limit]
         
-        msg = "╔══════════════════════╗\n"
-        msg += "║    战力排行榜    ║\n"
-        msg += "╚══════════════════════╝\n\n"
+        msg = "📊 战力排行榜\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         
         for idx, (player, power) in enumerate(sorted_players, 1):
             name = player.user_name if player.user_name else f"道友{player.user_id[:6]}"
@@ -110,9 +108,8 @@ class RankingManager:
         # 按灵石排序
         sorted_players = sorted(all_players, key=lambda p: p.gold, reverse=True)[:limit]
         
-        msg = "╔══════════════════════╗\n"
-        msg += "║    财富排行榜    ║\n"
-        msg += "╚══════════════════════╝\n\n"
+        msg = "📊 财富排行榜\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         
         for idx, player in enumerate(sorted_players, 1):
             name = player.user_name if player.user_name else f"道友{player.user_id[:6]}"
@@ -139,9 +136,8 @@ class RankingManager:
         # 已经按建设度排序
         top_sects = all_sects[:limit]
         
-        msg = "╔══════════════════════╗\n"
-        msg += "║    宗门排行榜    ║\n"
-        msg += "╚══════════════════════╝\n\n"
+        msg = "📊 宗门排行榜\n"
+        msg += "━━━━━━━━━━━━━━━\n"
         
         for idx, sect in enumerate(top_sects, 1):
             owner = await self.db.get_player_by_id(sect.sect_owner)
@@ -177,9 +173,8 @@ class RankingManager:
         # 按贡献度排序
         sorted_members = sorted(members, key=lambda p: p.sect_contribution, reverse=True)[:limit]
         
-        msg = f"╔══════════════════════╗\n"
-        msg += f"║ {sect.sect_name} 贡献排行 ║\n"
-        msg += f"╚══════════════════════╝\n\n"
+        msg = f"📊 {sect.sect_name} 贡献排行\n"
+        msg += f"━━━━━━━━━━━━━━━\n"
         
         for idx, member in enumerate(sorted_members, 1):
             name = member.user_name if member.user_name else f"道友{member.user_id[:6]}"

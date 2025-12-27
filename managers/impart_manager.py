@@ -22,9 +22,8 @@ class ImpartManager:
             return False, "❌ 你还未开启传承系统！", None
         
         msg = f"""
-╔══════════════════════╗
-║    传承信息    ║
-╚══════════════════════╝
+✨ 传承信息
+━━━━━━━━━━━━━━━
 
 HP加成：{impart_info.impart_hp_per * 100:.1f}%
 MP加成：{impart_info.impart_mp_per * 100:.1f}%
