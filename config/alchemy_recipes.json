@@ -1,0 +1,37 @@
+[
+    {
+        "id": 1,
+        "name": "炼气丹",
+        "level_required": 0,
+        "materials": {"灵草": 2, "灵石": 50},
+        "success_rate": 85
+    },
+    {
+        "id": 2,
+        "name": "聚灵丹",
+        "level_required": 0,
+        "materials": {"灵草": 3, "灵石": 100},
+        "success_rate": 80
+    },
+    {
+        "id": 3,
+        "name": "凝气丹",
+        "level_required": 1,
+        "materials": {"灵草": 4, "灵石": 150},
+        "success_rate": 75
+    },
+    {
+        "id": 4,
+        "name": "培元丹",
+        "level_required": 3,
+        "materials": {"灵草": 5, "灵石": 250},
+        "success_rate": 70
+    },
+    {
+        "id": 5,
+        "name": "玄灵丹",
+        "level_required": 5,
+        "materials": {"灵草": 8, "灵石": 500},
+        "success_rate": 60
+    }
+]
