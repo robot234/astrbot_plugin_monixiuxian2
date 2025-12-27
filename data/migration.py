@@ -479,6 +479,15 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_expires ON pending_gifts(expires_at)")
     
+    # 创建银行账户表
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bank_accounts (
+            user_id TEXT PRIMARY KEY,
+            balance INTEGER NOT NULL DEFAULT 0,
+            last_interest_time INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    
     # 创建银行贷款表
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS bank_loans (
@@ -836,6 +845,16 @@ async def _migrate_to_v17(conn: aiosqlite.Connection, config_manager: ConfigMana
 async def _migrate_to_v18(conn: aiosqlite.Connection, config_manager: ConfigManager):
     """迁移到v18 - 银行贷款与交易流水系统"""
     logger.info("开始迁移到v18：银行贷款与交易流水系统")
+    
+    # 0. 确保 bank_accounts 表存在（v14可能未正确创建）
+    logger.info("确保银行账户表存在...")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bank_accounts (
+            user_id TEXT PRIMARY KEY,
+            balance INTEGER NOT NULL DEFAULT 0,
+            last_interest_time INTEGER NOT NULL DEFAULT 0
+        )
+    """)
     
     # 1. 创建银行贷款表
     logger.info("创建银行贷款表...")
