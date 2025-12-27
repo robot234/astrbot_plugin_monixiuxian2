@@ -230,3 +230,22 @@ class BountyManager:
                 break
         
         return dropped_items
+    
+    async def check_and_expire_bounties(self) -> int:
+        """检查并处理过期悬赏任务
+        
+        Returns:
+            处理的过期任务数量
+        """
+        import time
+        now = int(time.time())
+        
+        # 将过期的进行中任务标记为失败(status=3)
+        await self.db.conn.execute(
+            "UPDATE bounty_tasks SET status = 3 WHERE status = 1 AND expire_time < ?",
+            (now,)
+        )
+        await self.db.conn.commit()
+        
+        # 返回受影响的行数
+        return self.db.conn.total_changes

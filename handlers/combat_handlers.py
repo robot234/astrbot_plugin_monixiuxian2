@@ -25,8 +25,9 @@ class CombatHandlers:
                 row = await cursor.fetchone()
                 if row:
                     return {"last_duel_time": row[0], "last_spar_time": row[1]}
-        except:
-            pass
+        except Exception as e:
+            from astrbot.api import logger
+            logger.warning(f"获取战斗冷却失败: {e}")
         return {"last_duel_time": 0, "last_spar_time": 0}
     
     async def _update_combat_cooldown(self, user_id: str, combat_type: str):
@@ -52,8 +53,9 @@ class CombatHandlers:
                     (user_id, now, now)
                 )
             await self.db.conn.commit()
-        except:
-            pass
+        except Exception as e:
+            from astrbot.api import logger
+            logger.warning(f"更新战斗冷却失败: {e}")
 
     async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
         for component in event.message_obj.message:
@@ -63,22 +65,25 @@ class CombatHandlers:
             return arg
         return None
 
-    def _calculate_equipment_bonus(self, player) -> int:
-        """计算装备提供的额外攻击力"""
+    def _calculate_equipment_bonus(self, player) -> dict:
+        """计算装备提供的属性加成"""
+        bonus = {"atk": 0, "defense": 0}
         if not self.config_manager:
-            return 0
+            return bonus
             
-        bonus = 0
         # 武器
         if player.weapon and player.weapon in self.config_manager.weapons_data:
             data = self.config_manager.weapons_data[player.weapon]
-            # 兼容旧版属性：物攻+法攻=总攻击
-            bonus += data.get("atk", 0)
-            bonus += data.get("physical_damage", 0)
-            bonus += data.get("magic_damage", 0)
-            
-        # 防具通常加防御，这里暂不计算（CombatStats有defense字段，后续可加）
+            bonus["atk"] += data.get("atk", 0)
+            bonus["atk"] += data.get("physical_damage", 0)
+            bonus["atk"] += data.get("magic_damage", 0)
         
+        # 防具
+        if player.armor and player.armor in self.config_manager.items_data:
+            data = self.config_manager.items_data[player.armor]
+            bonus["defense"] += data.get("physical_defense", 0)
+            bonus["defense"] += data.get("magic_defense", 0)
+            
         return bonus
 
     async def _prepare_combat_stats(self, user_id: str) -> CombatStats:
@@ -98,8 +103,8 @@ class CombatHandlers:
         base_atk = self.combat_mgr.calculate_atk(player.experience, player.atkpractice, atk_buff)
         
         # 加上装备加成
-        equip_atk = self._calculate_equipment_bonus(player)
-        final_atk = base_atk + equip_atk
+        equip_bonus = self._calculate_equipment_bonus(player)
+        final_atk = base_atk + equip_bonus["atk"]
         
         # 更新Player对象（可选，为了持久化）
         player.hp = hp
@@ -115,6 +120,7 @@ class CombatHandlers:
             mp=mp,
             max_mp=int(player.experience * (1 + mp_buff)),
             atk=final_atk,
+            defense=equip_bonus["defense"],
             exp=player.experience
         )
 

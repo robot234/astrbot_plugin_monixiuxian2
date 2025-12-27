@@ -97,8 +97,8 @@ async def _check_loan_status(db, player: Player) -> dict:
             # 玩家逾期，执行追杀
             player_name = player.user_name or f"道友{player.user_id[:6]}"
             
-            # 删除玩家
-            await db.delete_player(player.user_id)
+            # 删除玩家（级联删除所有关联数据）
+            await db.delete_player_cascade(player.user_id)
             
             # 标记贷款逾期
             await db.ext.mark_loan_overdue(loan["id"])

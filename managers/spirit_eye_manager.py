@@ -68,42 +68,53 @@ class SpiritEyeManager:
         return True, f"天地间出现了一处【{config['name']}】！速来抢占！"
     
     async def claim_spirit_eye(self, player: Player, eye_id: int) -> Tuple[bool, str]:
-        """抢占灵眼"""
-        # 检查是否已有灵眼
-        existing = await self.get_user_spirit_eye(player.user_id)
-        if existing:
-            return False, f"❌ 你已占据【{existing['eye_name']}】，无法再抢占。"
-        
-        # 获取目标灵眼
-        async with self.db.conn.execute(
-            "SELECT * FROM spirit_eyes WHERE eye_id = ?",
-            (eye_id,)
-        ) as cursor:
-            row = await cursor.fetchone()
-            if not row:
-                return False, "❌ 灵眼不存在。"
-            eye = dict(row)
-        
-        # 检查是否有主
-        if eye["owner_id"]:
-            return False, f"❌ 此灵眼已被【{eye['owner_name'] or '某人'}】占据。"
-        
-        # 抢占（claim_time记录抢占时间，last_collect_time记录上次收取时间）
-        now = int(time.time())
-        await self.db.conn.execute(
-            """
-            UPDATE spirit_eyes SET owner_id = ?, owner_name = ?, claim_time = ?, last_collect_time = ?
-            WHERE eye_id = ?
-            """,
-            (player.user_id, player.user_name or player.user_id[:8], now, now, eye_id)
-        )
-        await self.db.conn.commit()
-        
-        return True, (
-            f"✨ 成功抢占【{eye['eye_name']}】！\n"
-            f"每小时可获得 {eye['exp_per_hour']:,} 修为！\n"
-            f"使用 /灵眼收取 领取收益"
-        )
+        """抢占灵眼（原子操作）"""
+        await self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            # 检查是否已有灵眼
+            existing = await self.get_user_spirit_eye(player.user_id)
+            if existing:
+                await self.db.conn.rollback()
+                return False, f"❌ 你已占据【{existing['eye_name']}】，无法再抢占。"
+            
+            # 获取目标灵眼（带锁）
+            async with self.db.conn.execute(
+                "SELECT * FROM spirit_eyes WHERE eye_id = ?",
+                (eye_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+                if not row:
+                    await self.db.conn.rollback()
+                    return False, "❌ 灵眼不存在。"
+                eye = dict(row)
+            
+            # 检查是否有主
+            if eye["owner_id"]:
+                await self.db.conn.rollback()
+                return False, f"❌ 此灵眼已被【{eye['owner_name'] or '某人'}】占据。"
+            
+            # 抢占
+            now = int(time.time())
+            await self.db.conn.execute(
+                """UPDATE spirit_eyes SET owner_id = ?, owner_name = ?, claim_time = ?, last_collect_time = ?
+                   WHERE eye_id = ? AND (owner_id IS NULL OR owner_id = '')""",
+                (player.user_id, player.user_name or player.user_id[:8], now, now, eye_id)
+            )
+            
+            # 检查是否真的抢占成功（防止并发）
+            if self.db.conn.total_changes == 0:
+                await self.db.conn.rollback()
+                return False, "❌ 抢占失败，灵眼已被他人占据。"
+            
+            await self.db.conn.commit()
+            return True, (
+                f"✨ 成功抢占【{eye['eye_name']}】！\n"
+                f"每小时可获得 {eye['exp_per_hour']:,} 修为！\n"
+                f"使用 /灵眼收取 领取收益"
+            )
+        except Exception as e:
+            await self.db.conn.rollback()
+            raise
     
     async def collect_spirit_eye(self, player: Player) -> Tuple[bool, str]:
         """收取灵眼收益"""

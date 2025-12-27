@@ -11,6 +11,10 @@ from ..data.data_manager import DataBase
 from ..models_extended import Sect, UserStatus
 from ..models import Player
 
+SECT_NAME_MIN_LENGTH = 2
+SECT_NAME_MAX_LENGTH = 12
+SECT_NAME_FORBIDDEN = ["管理员", "系统", "官方", "GM", "admin"]
+
 
 class SectManager:
     """宗门系统管理器"""
@@ -36,6 +40,15 @@ class SectManager:
     def __init__(self, db: DataBase, config_manager=None):
         self.db = db
         self.config = config_manager.sect_config if config_manager else {}
+    
+    def _validate_sect_name(self, name: str) -> Tuple[bool, str]:
+        """验证宗门名称"""
+        if len(name) < SECT_NAME_MIN_LENGTH or len(name) > SECT_NAME_MAX_LENGTH:
+            return False, f"❌ 宗门名称长度需在{SECT_NAME_MIN_LENGTH}-{SECT_NAME_MAX_LENGTH}字之间！"
+        for forbidden in SECT_NAME_FORBIDDEN:
+            if forbidden.lower() in name.lower():
+                return False, f"❌ 宗门名称包含禁用词汇！"
+        return True, ""
     
     async def create_sect(
         self,
@@ -77,6 +90,11 @@ class SectManager:
         # 4. 检查灵石
         if player.gold < required_stone:
             return False, f"❌ 创建宗门需要 {required_stone} 灵石！"
+        
+        # 验证宗门名称
+        valid, error = self._validate_sect_name(sect_name)
+        if not valid:
+            return False, error
         
         # 5. 检查宗门名称是否重复
         existing_sect = await self.db.ext.get_sect_by_name(sect_name)
@@ -497,3 +515,27 @@ class SectManager:
         await self.db.ext.set_user_busy(user_id, 4, current_time + 3600)
         
         return True, f"✨ 完成宗门任务！\n获得贡献：{contribution_gain}\n宗门资材：+{stone_gain}"
+
+    async def handle_owner_death(self, sect_id: int, dead_owner_id: str) -> Tuple[bool, str]:
+        """处理宗主死亡，自动传位或解散宗门"""
+        members = await self.db.ext.get_sect_members(sect_id)
+        # 过滤掉死亡的宗主
+        remaining = [m for m in members if m.user_id != dead_owner_id]
+        
+        if not remaining:
+            # 无其他成员，解散宗门
+            await self.db.ext.delete_sect(sect_id)
+            return True, "宗门已解散"
+        
+        # 按职位和贡献排序，选择新宗主
+        remaining.sort(key=lambda m: (m.sect_position, -m.sect_contribution))
+        new_owner = remaining[0]
+        
+        # 更新宗门宗主
+        sect = await self.db.ext.get_sect_by_id(sect_id)
+        if sect:
+            sect.sect_owner = new_owner.user_id
+            await self.db.ext.update_sect(sect)
+            await self.db.ext.update_player_sect_info(new_owner.user_id, sect_id, 0)
+        
+        return True, f"宗主之位已传给{new_owner.user_name or new_owner.user_id}"

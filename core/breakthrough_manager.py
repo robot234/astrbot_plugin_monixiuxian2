@@ -288,8 +288,8 @@ class BreakthroughManager:
                     # 返回False（突破失败），消息，False（未真正死亡）
                     return False, resurrection_msg, False
 
-                # 玩家死亡 - 删除数据
-                await self.db.delete_player(player.user_id)
+                # 玩家死亡 - 级联删除所有关联数据
+                await self.db.delete_player_cascade(player.user_id)
 
                 death_msg = (
                     f"💀 突破失败，走火入魔！💀\n"

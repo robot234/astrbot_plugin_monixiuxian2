@@ -60,6 +60,6 @@ data/	5 个	数据管理与持久化
 config/	4+ 个	配置文件
 
 ## 务必遵守
-    - 如果如果有功能更新、BUG修复时需在README.md、metadata.yaml、misc_handler.py、plugin_cache_original.json等地方更新版本号 需在README.md中更新本次更新或修复的内容，如果有新的指令 需确保misc_handler.py的/修仙帮助 的命令中及时更新，如果有数据库更新也需要判断是否需要更新数据库
+    - 如果如果有功能更新、BUG修复时需在README.md、metadata.yaml、misc_handler.py等地方更新版本号 需在README.md中更新本次更新或修复的内容，如果有新的指令 需确保misc_handler.py的/修仙帮助 的命令中及时更新，如果有数据库更新也需要判断是否需要更新数据库
 
     - 本项目是astrbot的一个文字修仙插件 遵循项目中plugin.md的开发规范、或则你也可以访问https://docs.astrbot.app/dev/star/plugin-new.html 查看最新的开发规范

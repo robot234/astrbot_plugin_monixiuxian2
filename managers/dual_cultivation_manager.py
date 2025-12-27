@@ -13,6 +13,7 @@ __all__ = ["DualCultivationManager"]
 DUAL_CULT_COOLDOWN = 3600  # 1小时冷却
 DUAL_CULT_EXP_BONUS = 0.1  # 10%修为互增
 DUAL_CULT_REQUEST_EXPIRE = 300  # 请求过期时间（5分钟）
+DUAL_CULT_MAX_EXP_RATIO = 3.0  # 双修双方修为差距最大3倍
 
 
 class DualCultivationManager:
@@ -101,6 +102,11 @@ class DualCultivationManager:
         if not target:
             return False, "❌ 对方还未踏入修仙之路。"
         
+        # 检查修为差距
+        exp_ratio = max(initiator.experience, target.experience) / max(min(initiator.experience, target.experience), 1)
+        if exp_ratio > DUAL_CULT_MAX_EXP_RATIO:
+            return False, f"❌ 双方修为差距过大（最大{DUAL_CULT_MAX_EXP_RATIO}倍），无法双修。"
+        
         # 检查目标状态
         target_cd = await self.db.ext.get_user_cd(target_id)
         if target_cd and target_cd.type != UserStatus.IDLE:
@@ -136,6 +142,12 @@ class DualCultivationManager:
         if not initiator:
             await self._delete_request(request["id"])
             return False, "❌ 请求发起者数据异常。"
+        
+        # 再次检查修为差距
+        exp_ratio = max(initiator.experience, acceptor.experience) / max(min(initiator.experience, acceptor.experience), 1)
+        if exp_ratio > DUAL_CULT_MAX_EXP_RATIO:
+            await self._delete_request(request["id"])
+            return False, f"❌ 双方修为差距已超过限制，双修取消。"
         
         # 计算双修收益
         init_exp_gain = int(acceptor.experience * DUAL_CULT_EXP_BONUS)

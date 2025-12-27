@@ -229,6 +229,7 @@ class XiuXianPlugin(Star):
         self.boss_task = None # Boss生成任务
         self.loan_check_task = None # 贷款逾期检查任务
         self.spirit_eye_task = None # 灵眼生成任务
+        self.bounty_check_task = None  # 悬赏过期检查任务
 
         access_control_config = self.config.get("ACCESS_CONTROL", {})
         self.whitelist_groups = [str(g) for g in access_control_config.get("WHITELIST_GROUPS", [])]
@@ -282,6 +283,7 @@ class XiuXianPlugin(Star):
         self.boss_task = asyncio.create_task(self._schedule_boss_spawn())
         self.loan_check_task = asyncio.create_task(self._schedule_loan_check())
         self.spirit_eye_task = asyncio.create_task(self._schedule_spirit_eye_spawn())
+        self.bounty_check_task = asyncio.create_task(self._schedule_bounty_check())
         
         logger.info("【修仙插件】已加载。")
 
@@ -292,6 +294,8 @@ class XiuXianPlugin(Star):
             self.loan_check_task.cancel()
         if self.spirit_eye_task:
             self.spirit_eye_task.cancel()
+        if self.bounty_check_task:
+            self.bounty_check_task.cancel()
         await self.db.close()
         logger.info("【修仙插件】已卸载。")
         
@@ -510,6 +514,20 @@ class XiuXianPlugin(Star):
                 break
             except Exception as e:
                 logger.error(f"灵眼生成任务异常: {e}")
+                await asyncio.sleep(60)
+
+    async def _schedule_bounty_check(self):
+        """悬赏过期检查定时任务（每30分钟检查一次）"""
+        while True:
+            try:
+                await asyncio.sleep(1800)  # 30分钟
+                expired = await self.bounty_mgr.check_and_expire_bounties()
+                if expired > 0:
+                    logger.info(f"【修仙插件】处理了 {expired} 个过期悬赏任务")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"悬赏检查任务异常: {e}")
                 await asyncio.sleep(60)
 
     async def _broadcast_spirit_eye_spawn(self, msg: str):

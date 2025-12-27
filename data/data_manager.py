@@ -232,6 +232,29 @@ class DataBase:
         )
         await self.conn.commit()
 
+    async def delete_player_cascade(self, user_id: str):
+        """级联删除玩家及所有关联数据"""
+        await self.conn.execute(
+            "UPDATE spirit_eyes SET owner_id = NULL, owner_name = NULL, claim_time = NULL WHERE owner_id = ?",
+            (user_id,)
+        )
+        await self.conn.execute("DELETE FROM blessed_lands WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM spirit_farms WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM bank_accounts WHERE user_id = ?", (user_id,))
+        await self.conn.execute(
+            "UPDATE bank_loans SET status = 'bad_debt' WHERE user_id = ? AND status = 'active'",
+            (user_id,)
+        )
+        await self.conn.execute("DELETE FROM bounty_tasks WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM dual_cultivation WHERE user_id = ? OR partner_id = ?", (user_id, user_id))
+        await self.conn.execute("DELETE FROM dual_cultivation_requests WHERE requester_id = ? OR target_id = ?", (user_id, user_id))
+        await self.conn.execute("DELETE FROM user_cd WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM buff_info WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM impart_info WHERE user_id = ?", (user_id,))
+        await self.conn.execute("DELETE FROM combat_cooldowns WHERE attacker_id = ? OR defender_id = ?", (user_id, user_id))
+        await self.conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
+        await self.conn.commit()
+
     async def get_all_players(self):
         """获取所有玩家"""
         async with self.conn.execute("SELECT * FROM players") as cursor:
