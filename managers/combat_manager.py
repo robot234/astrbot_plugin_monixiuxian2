@@ -148,7 +148,7 @@ class CombatManager:
             
             # 玩家1攻击
             is_crit1, damage1 = cls.calculate_turn_attack(player1.atk, player1.crit_rate)
-            damage1 = cls.apply_damage_reduction(damage1, 0)  # 可以根据装备添加防御
+            damage1 = cls.apply_damage_reduction(damage1, player2.defense / 100)
             player2.hp -= damage1
             
             if is_crit1:
@@ -162,7 +162,7 @@ class CombatManager:
             
             # 玩家2攻击
             is_crit2, damage2 = cls.calculate_turn_attack(player2.atk, player2.crit_rate)
-            damage2 = cls.apply_damage_reduction(damage2, 0)
+            damage2 = cls.apply_damage_reduction(damage2, player1.defense / 100)
             player1.hp -= damage2
             
             if is_crit2:
@@ -255,7 +255,7 @@ class CombatManager:
             
             # Boss攻击
             is_boss_crit, boss_damage = cls.calculate_turn_attack(boss.atk, 30)  # Boss固定30会心率
-            boss_damage = cls.apply_damage_reduction(boss_damage, 0)
+            boss_damage = cls.apply_damage_reduction(boss_damage, player.defense / 100)
             player.hp -= boss_damage
             
             if is_boss_crit:

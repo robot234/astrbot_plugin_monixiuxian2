@@ -11,13 +11,13 @@ if TYPE_CHECKING:
 
 __all__ = ["SpiritFarmManager"]
 
-# 灵草配置
+# 灵草配置 (wither_time: 成熟后枯萎时间，默认48小时)
 SPIRIT_HERBS = {
-    "灵草": {"grow_time": 3600, "exp_yield": 500, "gold_yield": 100},
-    "血灵草": {"grow_time": 7200, "exp_yield": 1500, "gold_yield": 300},
-    "冰心草": {"grow_time": 14400, "exp_yield": 4000, "gold_yield": 800},
-    "火焰花": {"grow_time": 28800, "exp_yield": 10000, "gold_yield": 2000},
-    "九叶灵芝": {"grow_time": 86400, "exp_yield": 30000, "gold_yield": 6000},
+    "灵草": {"grow_time": 3600, "exp_yield": 500, "gold_yield": 100, "wither_time": 172800},
+    "血灵草": {"grow_time": 7200, "exp_yield": 1500, "gold_yield": 300, "wither_time": 172800},
+    "冰心草": {"grow_time": 14400, "exp_yield": 4000, "gold_yield": 800, "wither_time": 172800},
+    "火焰花": {"grow_time": 28800, "exp_yield": 10000, "gold_yield": 2000, "wither_time": 172800},
+    "九叶灵芝": {"grow_time": 86400, "exp_yield": 30000, "gold_yield": 6000, "wither_time": 172800},
 }
 
 # 灵田等级配置
@@ -134,22 +134,29 @@ class SpiritFarmManager:
         
         now = int(time.time())
         mature_crops = []
+        withered_crops = []
         remaining_crops = []
         
         for crop in crops:
             if now >= crop["mature_time"]:
-                mature_crops.append(crop)
+                herb_config = SPIRIT_HERBS.get(crop["name"], SPIRIT_HERBS["灵草"])
+                wither_time = herb_config.get("wither_time", 172800)
+                wither_deadline = crop["mature_time"] + wither_time
+                if now >= wither_deadline:
+                    withered_crops.append(crop)
+                else:
+                    mature_crops.append(crop)
             else:
                 remaining_crops.append(crop)
         
-        if not mature_crops:
+        if not mature_crops and not withered_crops:
             return False, "❌ 没有成熟的灵草可以收获。"
         
-        # 计算奖励
+        # 计算奖励（只有成熟未枯萎的才有收益）
         total_exp = 0
         total_gold = 0
         harvest_details = []
-        herb_counts = {}  # 统计各类灵草数量
+        herb_counts = {}
         
         for crop in mature_crops:
             herb_name = crop["name"]
@@ -160,9 +167,10 @@ class SpiritFarmManager:
             herb_counts[herb_name] = herb_counts.get(herb_name, 0) + 1
         
         # 应用奖励
-        player.experience += total_exp
-        player.gold += total_gold
-        await self.db.update_player(player)
+        if total_exp > 0 or total_gold > 0:
+            player.experience += total_exp
+            player.gold += total_gold
+            await self.db.update_player(player)
         
         # 将灵草存入储物戒
         stored_items = []
@@ -181,19 +189,26 @@ class SpiritFarmManager:
         )
         await self.db.conn.commit()
         
-        item_msg = ""
-        if stored_items:
-            item_msg = f"\n📦 存入储物戒：\n  " + "\n  ".join(stored_items)
+        # 构建返回消息
+        msg_lines = ["🌾 收获结果", "━━━━━━━━━━━━━━━"]
         
-        return True, (
-            f"🌾 收获成功！\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"收获：{', '.join(harvest_details)}\n"
-            f"获得修为：+{total_exp:,}\n"
-            f"获得灵石：+{total_gold:,}{item_msg}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"剩余种植：{len(remaining_crops)} 株"
-        )
+        if harvest_details:
+            msg_lines.append(f"收获：{', '.join(harvest_details)}")
+            msg_lines.append(f"获得修为：+{total_exp:,}")
+            msg_lines.append(f"获得灵石：+{total_gold:,}")
+            if stored_items:
+                msg_lines.append(f"📦 存入储物戒：")
+                for item in stored_items:
+                    msg_lines.append(f"  {item}")
+        
+        if withered_crops:
+            withered_names = [c["name"] for c in withered_crops]
+            msg_lines.append(f"💀 枯萎清除：{', '.join(withered_names)}（共{len(withered_crops)}株）")
+        
+        msg_lines.append("━━━━━━━━━━━━━━━")
+        msg_lines.append(f"剩余种植：{len(remaining_crops)} 株")
+        
+        return True, "\n".join(msg_lines)
     
     async def upgrade_farm(self, player: Player) -> Tuple[bool, str]:
         """升级灵田"""
@@ -250,13 +265,24 @@ class SpiritFarmManager:
         if crops:
             lines.append("【种植中】")
             for i, crop in enumerate(crops, 1):
+                herb_config = SPIRIT_HERBS.get(crop["name"], SPIRIT_HERBS["灵草"])
                 remaining = max(0, crop["mature_time"] - now)
                 if remaining > 0:
                     hours = remaining // 3600
                     minutes = (remaining % 3600) // 60
                     status = f"成熟还需 {hours}时{minutes}分"
                 else:
-                    status = "✅ 已成熟"
+                    wither_time = herb_config.get("wither_time", 172800)
+                    wither_deadline = crop["mature_time"] + wither_time
+                    wither_remaining = wither_deadline - now
+                    if wither_remaining <= 0:
+                        status = "💀 已枯萎"
+                    elif wither_remaining <= 3600:
+                        minutes_left = wither_remaining // 60
+                        status = f"⚠️ 即将枯萎（{minutes_left}分钟）"
+                    else:
+                        hours_left = wither_remaining // 3600
+                        status = f"✅ 已成熟（{hours_left}小时后枯萎）"
                 lines.append(f"  {i}. {crop['name']} - {status}")
         else:
             lines.append("（空）")

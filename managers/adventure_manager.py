@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 class AdventureManager:
     """历练系统管理器"""
     
-    # 历练时长配置（秒）
+    # 历练时长配置（秒）及收益上限
     ADVENTURE_DURATIONS = {
-        "short": 1800,    # 30分钟
-        "medium": 3600,   # 1小时
-        "long": 7200,     # 2小时
+        "short": {"duration": 1800, "max_bonus_exp": 5000, "max_bonus_gold": 2000},      # 30分钟
+        "medium": {"duration": 3600, "max_bonus_exp": 15000, "max_bonus_gold": 5000},    # 1小时
+        "long": {"duration": 7200, "max_bonus_exp": 40000, "max_bonus_gold": 15000},     # 2小时
     }
     
     # 物品掉落表（按境界分组）
@@ -106,7 +106,7 @@ class AdventureManager:
         if adventure_type not in self.ADVENTURE_DURATIONS:
             adventure_type = "medium"
         
-        duration = self.ADVENTURE_DURATIONS[adventure_type]
+        duration = self.ADVENTURE_DURATIONS[adventure_type]["duration"]
         duration_minutes = duration // 60
         
         # 4. 设置历练状态
@@ -149,6 +149,15 @@ class AdventureManager:
         # 4. 计算历练时长（用于奖励计算）
         adventure_duration = current_time - user_cd.create_time
         
+        # 4.1 根据预定时长推断历练类型
+        scheduled_duration = user_cd.scheduled_time - user_cd.create_time
+        adventure_type = "medium"  # 默认中途
+        for atype, config in self.ADVENTURE_DURATIONS.items():
+            if abs(config["duration"] - scheduled_duration) < 60:  # 允许1分钟误差
+                adventure_type = atype
+                break
+        adventure_config = self.ADVENTURE_DURATIONS[adventure_type]
+        
         # 5. 随机事件
         event = self._trigger_random_event()
         
@@ -158,9 +167,13 @@ class AdventureManager:
         base_exp_per_min = 50  # 每分钟基础50修为
         base_gold_per_min = 10  # 每分钟基础10灵石
         
-        # 额外加成：根据玩家当前修为额外奖励
+        # 额外加成：根据玩家当前修为额外奖励（有上限）
         bonus_exp = int(player.experience * 0.03 * (adventure_duration / 3600))  # 每小时3%修为
         bonus_gold = int(player.experience * 0.01 * (adventure_duration / 3600))  # 每小时1%修为转换为灵石
+        
+        # 应用收益上限
+        bonus_exp = min(bonus_exp, adventure_config["max_bonus_exp"])
+        bonus_gold = min(bonus_gold, adventure_config["max_bonus_gold"])
         
         base_exp = int(duration_minutes * base_exp_per_min) + bonus_exp
         base_gold = int(duration_minutes * base_gold_per_min) + bonus_gold

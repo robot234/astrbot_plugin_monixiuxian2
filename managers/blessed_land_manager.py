@@ -10,11 +10,11 @@ __all__ = ["BlessedLandManager"]
 
 # 洞天配置
 BLESSED_LANDS = {
-    1: {"name": "小洞天", "price": 10000, "exp_bonus": 0.05, "gold_per_hour": 100, "max_level": 5},
-    2: {"name": "中洞天", "price": 50000, "exp_bonus": 0.10, "gold_per_hour": 500, "max_level": 10},
-    3: {"name": "大洞天", "price": 200000, "exp_bonus": 0.20, "gold_per_hour": 2000, "max_level": 15},
-    4: {"name": "福地", "price": 500000, "exp_bonus": 0.30, "gold_per_hour": 5000, "max_level": 20},
-    5: {"name": "洞天福地", "price": 1000000, "exp_bonus": 0.50, "gold_per_hour": 10000, "max_level": 30},
+    1: {"name": "小洞天", "price": 10000, "exp_bonus": 0.05, "gold_per_hour": 100, "max_level": 5, "max_exp_per_hour": 5000},
+    2: {"name": "中洞天", "price": 50000, "exp_bonus": 0.10, "gold_per_hour": 500, "max_level": 10, "max_exp_per_hour": 15000},
+    3: {"name": "大洞天", "price": 200000, "exp_bonus": 0.20, "gold_per_hour": 2000, "max_level": 15, "max_exp_per_hour": 30000},
+    4: {"name": "福地", "price": 500000, "exp_bonus": 0.30, "gold_per_hour": 5000, "max_level": 20, "max_exp_per_hour": 50000},
+    5: {"name": "洞天福地", "price": 1000000, "exp_bonus": 0.50, "gold_per_hour": 10000, "max_level": 30, "max_exp_per_hour": 100000},
 }
 
 
@@ -138,7 +138,13 @@ class BlessedLandManager:
         # 计算产出（最多24小时）
         hours = min(24, int(hours_passed))
         gold_income = land["gold_per_hour"] * hours
-        exp_income = int(player.experience * land["exp_bonus"] * hours * 0.01)  # 每小时获得exp_bonus%的1%
+        
+        # 计算修为收益，并限制上限防止高修为玩家收益无限增长
+        land_type = land["land_type"]
+        config = BLESSED_LANDS.get(land_type, BLESSED_LANDS[1])
+        max_exp_per_hour = config.get("max_exp_per_hour", 5000)
+        exp_income = int(player.experience * land["exp_bonus"] * hours * 0.01)
+        exp_income = min(exp_income, max_exp_per_hour * hours)
         
         player.gold += gold_income
         player.experience += exp_income
