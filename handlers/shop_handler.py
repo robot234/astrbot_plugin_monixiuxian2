@@ -147,18 +147,6 @@ class ShopHandler:
         item_type = target_item['type']
         result_lines = []
 
-        parsed_item = None
-        if item_type in ['weapon', 'armor', 'main_technique', 'technique', 'accessory']:
-            if quantity > 1:
-                yield event.plain_result("装备类物品一次只能购买1件。")
-                return
-            parsed_item = self.equipment_manager.parse_item_from_name(
-                target_item['name'], self.config_manager.items_data, self.config_manager.weapons_data
-            )
-            if not parsed_item:
-                yield event.plain_result("装备信息不存在，无法完成购买。")
-                return
-
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
             player = await self.db.get_player_by_id(event.get_sender_id())
@@ -176,19 +164,13 @@ class ShopHandler:
                 yield event.plain_result(f"【{item_name}】已售罄，请等待刷新。")
                 return
 
-            if item_type in ['weapon', 'armor', 'main_technique', 'technique']:
-                success, message = await self.equipment_manager.equip_item(player, parsed_item)
-                if not success:
-                    await self.db.conn.rollback()
-                    yield event.plain_result(message)
-                    return
-                result_lines.append(message)
-            elif item_type == 'accessory':
+            if item_type in ['weapon', 'armor', 'main_technique', 'technique', 'accessory']:
                 success, msg = await self.storage_ring_manager.store_item(player, target_item['name'], quantity)
                 if success:
-                    result_lines.append(f"成功购买饰品【{target_item['name']}】x{quantity}，已存入储物戒。")
+                    type_name = {"weapon": "武器", "armor": "防具", "main_technique": "心法", "technique": "功法", "accessory": "饰品"}.get(item_type, "装备")
+                    result_lines.append(f"成功购买{type_name}【{target_item['name']}】x{quantity}，已存入储物戒。")
                 else:
-                    result_lines.append(f"成功购买饰品【{target_item['name']}】x{quantity}。")
+                    result_lines.append(f"成功购买【{target_item['name']}】x{quantity}。")
                     result_lines.append(f"⚠️ 存入储物戒失败：{msg}")
             elif item_type in ['pill', 'exp_pill', 'utility_pill']:
                 await self.pill_manager.add_pill_to_inventory(player, target_item['name'], count=quantity)
