@@ -115,11 +115,8 @@ class RankingManager:
                 self.config_manager.weapons_data
             )
             
-            # 获取丹药效果
-            pill_multipliers = player.get_pill_multipliers()
-            
-            # 计算总属性
-            total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
+            # 排行榜显示基础战力，不含临时丹药效果（更公平）
+            total_attrs = player.get_total_attributes(equipped_items, None)
             
             # 战力 = 物伤 + 法伤 + 物防 + 法防 + 精神力/10
             combat_power = (
