@@ -16,6 +16,7 @@ CMD_PLAYER_INFO = "我的信息"
 CMD_START_CULTIVATION = "闭关"
 CMD_END_CULTIVATION = "出关"
 CMD_CHECK_IN = "签到"
+REBIRTH_COOLDOWN = 7 * 24 * 3600
 
 __all__ = ["PlayerHandler"]
 
@@ -413,3 +414,58 @@ class PlayerHandler:
             "明日再来，莫要忘记哦~"
         )
         yield event.plain_result(reply_msg)
+
+    @player_required
+    async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):
+        """弃道重修（7天冷却）"""
+        user_cd = await self.db.ext.get_user_cd(player.user_id)
+        if user_cd and user_cd.type != UserStatus.IDLE:
+            status_name = UserStatus.get_name(user_cd.type)
+            yield event.plain_result(f"❌ 你当前正在「{status_name}」，无法弃道重修。")
+            return
+
+        if player.state != "空闲":
+            yield event.plain_result("❌ 只有处于空闲状态时才能弃道重修。请先结束闭关/历练等活动。")
+            return
+
+        loan = await self.db.ext.get_active_loan(player.user_id)
+        if loan:
+            yield event.plain_result("❌ 你仍有未结清的灵石贷款，无法重修。请先还款。")
+            return
+
+        key = f"rebirth_last_{player.user_id}"
+        last_ts = await self.db.ext.get_system_config(key)
+        now = int(time.time())
+        if last_ts:
+            diff = now - int(last_ts)
+            if diff < REBIRTH_COOLDOWN:
+                remaining = REBIRTH_COOLDOWN - diff
+                days = remaining // 86400
+                hours = (remaining % 86400) // 3600
+                minutes = (remaining % 3600) // 60
+                yield event.plain_result(
+                    "⌛ 弃道重修冷却中\n"
+                    "━━━━━━━━━━━━━━━\n"
+                    f"距离下次重修还需：{days}天{hours}小时{minutes}分钟"
+                )
+                return
+
+        if confirm_text.strip() != "确认":
+            yield event.plain_result(
+                "⚠️ 弃道重修将删除当前角色的所有数据，并无法撤回！\n"
+                "限制：每7天只能重修一次，且必须在空闲状态、无贷款时使用。\n"
+                "━━━━━━━━━━━━━━━\n"
+                "若你已做好准备，请发送：\n"
+                "弃道重修 确认"
+            )
+            return
+
+        await self.db.delete_player_cascade(player.user_id)
+        await self.db.ext.set_system_config(key, str(now))
+
+        yield event.plain_result(
+            "💀 你选择了弃道重修，旧生一切化为尘埃。\n"
+            "━━━━━━━━━━━━━━━\n"
+            "可立即使用「我要修仙」重新踏上仙途。\n"
+            "（7天内不可再次重修）"
+        )

@@ -160,6 +160,7 @@ CMD_SPIRIT_EYE_CLAIM = "抢占灵眼"
 CMD_SPIRIT_EYE_COLLECT = "灵眼收取"
 CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
 
+CMD_REBIRTH = "弃道重修"
 class XiuXianPlugin(Star):
     """修仙插件 - 文字修仙游戏"""
 
@@ -595,6 +596,12 @@ class XiuXianPlugin(Star):
     @require_whitelist
     async def handle_player_info(self, event: AstrMessageEvent):
         async for r in self.player_handler.handle_player_info(event):
+            yield r
+
+    @filter.command(CMD_REBIRTH, "弃道重修（7天一次）")
+    @require_whitelist
+    async def handle_rebirth(self, event: AstrMessageEvent, confirm: str = ""):
+        async for r in self.player_handler.handle_rebirth(event, confirm):
             yield r
 
     @filter.command(CMD_START_CULTIVATION, "开始闭关修炼")
