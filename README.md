@@ -4,7 +4,7 @@
   <img src="logo.png" alt="模拟修仙" width="200">
 </p>
 
-> **版本:** v2.9.6  
+> **版本:** v2.9.7  
 > **许可证:** AGPL-3.0  
 > **作者:** xiaojuwa  
 > **基于:** [nonebot_plugin_xiuxian_2](https://github.com/xiuxian-2/nonebot_plugin_xiuxian_2) (部分借鉴与重构)
@@ -478,6 +478,15 @@ astrbot_plugin_monixiuxian2/
 | 悬赏过期处理 | bounty_manager.py | 完成时检查超时自动取消 |
 | 宗门名称验证 | sect_manager.py | 长度(2-12字)和敏感词检查 |
 | 传承buff应用 | combat_handlers.py | impart加成已应用到战斗 |
+
+---
+
+### v2.9.7 - 突破死亡清理修复
+
+**🛠 BUG 修复**
+| 问题 | 修复 |
+|------|------|
+| 突破失败死亡时，级联删除命令若遇到旧版本缺少的系统表会报错，导致玩家数据无法清理 | `delete_player_cascade` 现采用容错执行，缺表/旧表不再阻断玩家删除，确保死亡后可重新创建角色 |
 
 ---
 

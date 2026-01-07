@@ -5,6 +5,7 @@ import json
 from dataclasses import fields
 from pathlib import Path
 from typing import Tuple, List, Optional
+from astrbot.api import logger
 from ..models import Player
 from .database_extended import DatabaseExtended
 
@@ -234,25 +235,32 @@ class DataBase:
 
     async def delete_player_cascade(self, user_id: str):
         """级联删除玩家及所有关联数据"""
-        await self.conn.execute(
-            "UPDATE spirit_eyes SET owner_id = NULL, owner_name = NULL, claim_time = NULL WHERE owner_id = ?",
-            (user_id,)
-        )
-        await self.conn.execute("DELETE FROM blessed_lands WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM spirit_farms WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM bank_accounts WHERE user_id = ?", (user_id,))
-        await self.conn.execute(
-            "UPDATE bank_loans SET status = 'bad_debt' WHERE user_id = ? AND status = 'active'",
-            (user_id,)
-        )
-        await self.conn.execute("DELETE FROM bounty_tasks WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM dual_cultivation WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM dual_cultivation_requests WHERE from_id = ? OR target_id = ?", (user_id, user_id))
-        await self.conn.execute("DELETE FROM user_cd WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM buff_info WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM impart_info WHERE user_id = ?", (user_id,))
-        await self.conn.execute("DELETE FROM combat_cooldowns WHERE attacker_id = ? OR defender_id = ?", (user_id, user_id))
-        await self.conn.execute("DELETE FROM pending_gifts WHERE sender_id = ? OR receiver_id = ?", (user_id, user_id))
+        async def safe_execute(sql: str, params: tuple):
+            try:
+                await self.conn.execute(sql, params)
+            except Exception as e:
+                sql_preview = sql.strip().split(" ")[0]
+                logger.warning(f"[delete_player_cascade] 忽略执行 {sql_preview}: {e}")
+
+        statements = [
+            ("UPDATE spirit_eyes SET owner_id = NULL, owner_name = NULL, claim_time = NULL WHERE owner_id = ?", (user_id,)),
+            ("DELETE FROM blessed_lands WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM spirit_farms WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM bank_accounts WHERE user_id = ?", (user_id,)),
+            ("UPDATE bank_loans SET status = 'bad_debt' WHERE user_id = ? AND status = 'active'", (user_id,)),
+            ("DELETE FROM bounty_tasks WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM dual_cultivation WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM dual_cultivation_requests WHERE from_id = ? OR target_id = ?", (user_id, user_id)),
+            ("DELETE FROM user_cd WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM buff_info WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM impart_info WHERE user_id = ?", (user_id,)),
+            ("DELETE FROM combat_cooldowns WHERE attacker_id = ? OR defender_id = ?", (user_id, user_id)),
+            ("DELETE FROM pending_gifts WHERE sender_id = ? OR receiver_id = ?", (user_id, user_id)),
+        ]
+
+        for sql, params in statements:
+            await safe_execute(sql, params)
+
         await self.conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
         await self.conn.commit()
 
@@ -413,4 +421,3 @@ class DataBase:
         except Exception:
             await self.conn.rollback()
             raise
-
