@@ -1,9 +1,14 @@
 # managers/bounty_manager.py
 """悬赏令系统管理器"""
-import time
-import random
+
 import json
+import random
+import time
+from pathlib import Path
 from typing import Tuple, List, Optional, Dict, TYPE_CHECKING
+
+from astrbot.api import logger
+
 from ..data import DataBase
 from ..models import Player
 
@@ -12,204 +17,273 @@ if TYPE_CHECKING:
 
 __all__ = ["BountyManager"]
 
-# 悬赏任务配置（type 必须在 add_bounty_progress 的白名单中）
-BOUNTY_TEMPLATES = [
-    {"id": 1, "name": "击杀妖兽", "type": "kill", "min_count": 3, "max_count": 10, "base_reward": 500, "cooldown": 3600},
-    {"id": 2, "name": "采集灵草", "type": "gather", "min_count": 5, "max_count": 15, "base_reward": 300, "cooldown": 1800},
-    {"id": 3, "name": "护送商队", "type": "explore", "min_count": 1, "max_count": 3, "base_reward": 800, "cooldown": 7200},
-    {"id": 4, "name": "探索遗迹", "type": "explore", "min_count": 2, "max_count": 5, "base_reward": 600, "cooldown": 5400},
-    {"id": 5, "name": "收集灵石", "type": "gather", "min_count": 6, "max_count": 18, "base_reward": 200, "cooldown": 900},
-]
-
-# 悬赏物品奖励表
-BOUNTY_ITEM_REWARDS = {
-    "kill": [
-        {"name": "灵兽毛皮", "weight": 40, "min": 1, "max": 3},
-        {"name": "妖兽精血", "weight": 30, "min": 1, "max": 2},
-        {"name": "灵兽内丹", "weight": 20, "min": 1, "max": 1},
-        {"name": "玄铁", "weight": 10, "min": 1, "max": 2},
-    ],
-    "gather": [
-        {"name": "灵草", "weight": 50, "min": 2, "max": 5},
-        {"name": "精铁", "weight": 30, "min": 1, "max": 3},
-        {"name": "灵石碎片", "weight": 20, "min": 3, "max": 8},
-    ],
-    "escort": [
-        {"name": "玄铁", "weight": 35, "min": 2, "max": 4},
-        {"name": "星辰石", "weight": 25, "min": 1, "max": 2},
-        {"name": "功法残页", "weight": 25, "min": 1, "max": 1},
-        {"name": "天材地宝", "weight": 15, "min": 1, "max": 1},
-    ],
-    "explore": [
-        {"name": "灵草", "weight": 30, "min": 2, "max": 4},
-        {"name": "玄铁", "weight": 25, "min": 1, "max": 3},
-        {"name": "功法残页", "weight": 25, "min": 1, "max": 1},
-        {"name": "秘境精华", "weight": 20, "min": 1, "max": 2},
-    ],
-    "collect": [
-        {"name": "灵石碎片", "weight": 50, "min": 5, "max": 10},
-        {"name": "精铁", "weight": 30, "min": 2, "max": 4},
-        {"name": "灵草", "weight": 20, "min": 1, "max": 3},
-    ],
-}
 
 class BountyManager:
     """悬赏令管理器"""
-    
+
     BOUNTY_CACHE_DURATION = 600  # 任务列表缓存10分钟
-    
+    CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "bounty_templates.json"
+    DEFAULT_CONFIG = {
+        "difficulties": {
+            "easy": {"name": "F级", "stone_scale": 1.0, "exp_scale": 1.0, "min_level": 0}
+        },
+        "templates": [
+            {
+                "id": 1,
+                "name": "击退妖兽",
+                "difficulty": "easy",
+                "category": "巡山",
+                "progress_tags": ["adventure_scout"],
+                "min_target": 3,
+                "max_target": 5,
+                "time_limit": 3600,
+                "reward": {"stone": 300, "exp": 2500},
+                "item_table": "hunt",
+                "description": "驱逐骚扰山门的妖兽。"
+            }
+        ],
+        "item_tables": {
+            "hunt": [
+                {"name": "灵兽毛皮", "weight": 40, "min": 1, "max": 3},
+                {"name": "妖兽精血", "weight": 30, "min": 1, "max": 2},
+                {"name": "玄铁", "weight": 30, "min": 1, "max": 2}
+            ]
+        }
+    }
+
     def __init__(self, db: DataBase, storage_ring_manager: Optional["StorageRingManager"] = None):
         self.db = db
         self.storage_ring_manager = storage_ring_manager
-        self._bounty_cache: Dict[str, Dict] = {}  # {user_id: {"bounties": [...], "expire_time": int}}
-    
+        self._bounty_cache: Dict[str, Dict] = {}
+        self.difficulties: Dict[str, dict] = {}
+        self.templates_by_id: Dict[int, dict] = {}
+        self.templates_by_diff: Dict[str, List[dict]] = {}
+        self.item_tables: Dict[str, List[dict]] = {}
+        self.reload_config()
+
+    # -------- 配置 --------
+
+    def reload_config(self):
+        config = self._load_config_file()
+        self.difficulties = config.get("difficulties", self.DEFAULT_CONFIG["difficulties"])
+        self.item_tables = config.get("item_tables", self.DEFAULT_CONFIG["item_tables"])
+        self.templates_by_id = {}
+        self.templates_by_diff = {}
+        for tpl in config.get("templates", []):
+            tpl_copy = dict(tpl)
+            tpl_copy["progress_tags"] = [str(tag).lower() for tag in tpl_copy.get("progress_tags", [])]
+            self.templates_by_id[tpl_copy["id"]] = tpl_copy
+            self.templates_by_diff.setdefault(tpl_copy["difficulty"], []).append(tpl_copy)
+        logger.info(f"悬赏配置加载完成：{len(self.templates_by_id)} 条模板")
+
+    def _load_config_file(self) -> dict:
+        if self.CONFIG_FILE.exists():
+            try:
+                with open(self.CONFIG_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as exc:
+                logger.error(f"加载 bounty_templates.json 失败，将使用默认配置: {exc}")
+        return self.DEFAULT_CONFIG
+
+    # -------- 列表 & 缓存 --------
+
     def _get_cached_bounties(self, user_id: str) -> Optional[List[dict]]:
-        """获取缓存的任务列表"""
         cache = self._bounty_cache.get(user_id)
         if cache and cache["expire_time"] > int(time.time()):
             return cache["bounties"]
         return None
-    
+
     def _set_cached_bounties(self, user_id: str, bounties: List[dict]):
-        """缓存任务列表"""
         self._bounty_cache[user_id] = {
             "bounties": bounties,
             "expire_time": int(time.time()) + self.BOUNTY_CACHE_DURATION
         }
-    
+
     async def get_bounty_list(self, player: Player) -> List[dict]:
-        """获取可接取的悬赏任务列表（带缓存）"""
-        # 检查缓存
+        """获取悬赏列表"""
         cached = self._get_cached_bounties(player.user_id)
         if cached:
             return cached
-        
-        # 根据玩家境界生成不同难度的任务
-        level_multiplier = 1 + (player.level_index // 5) * 0.5
-        
-        bounties = []
-        for template in BOUNTY_TEMPLATES:
-            count = random.randint(template["min_count"], template["max_count"])
-            reward = int(template["base_reward"] * level_multiplier * (count / template["min_count"]))
-            
-            bounties.append({
-                "id": template["id"],
-                "name": template["name"],
-                "type": template["type"],
-                "count": count,
-                "reward": reward,
-                "cooldown": template["cooldown"]
-            })
-        
-        # 缓存任务列表
+
+        plan = self._get_difficulty_plan(player.level_index)
+        bounties: List[dict] = []
+        for diff in plan:
+            entry = self._build_bounty_entry(diff, player)
+            if entry:
+                bounties.append(entry)
+
         self._set_cached_bounties(player.user_id, bounties)
         return bounties
-    
-    async def accept_bounty(self, player: Player, bounty_id: int) -> Tuple[bool, str]:
-        """接取悬赏任务（使用缓存的任务数据，事务保护防止并发）"""
-        # 获取任务模板（在事务外进行，减少锁持有时间）
-        template = next((t for t in BOUNTY_TEMPLATES if t["id"] == bounty_id), None)
+
+    def _get_difficulty_plan(self, level_index: int) -> List[str]:
+        plan = ["easy", "normal"]
+        if level_index >= 7:
+            plan.append("hard")
+        if level_index >= 12:
+            plan.append("elite")
+        return [diff for diff in plan if diff in self.difficulties]
+
+    def _pick_template(self, difficulty: str) -> Optional[dict]:
+        templates = self.templates_by_diff.get(difficulty)
+        if not templates:
+            return None
+        total = sum(max(1, tpl.get("weight", 1)) for tpl in templates)
+        roll = random.randint(1, total)
+        upto = 0
+        for tpl in templates:
+            upto += max(1, tpl.get("weight", 1))
+            if roll <= upto:
+                return tpl
+        return templates[0]
+
+    def _build_bounty_entry(self, difficulty: str, player: Player) -> Optional[dict]:
+        template = self._pick_template(difficulty)
         if not template:
+            return None
+        diff_cfg = self.difficulties.get(difficulty, {})
+        target = random.randint(template.get("min_target", 1), template.get("max_target", 1))
+        reward = self._calculate_reward(template, diff_cfg, player, target)
+        progress_tags = [str(tag).lower() for tag in template.get("progress_tags", [])]
+        return {
+            "id": template["id"],
+            "name": template["name"],
+            "category": template.get("category", "任务"),
+            "difficulty": difficulty,
+            "difficulty_name": diff_cfg.get("name", difficulty),
+            "description": template.get("description", ""),
+            "count": target,
+            "reward": reward,
+            "time_limit": template.get("time_limit", 3600),
+            "progress_tags": progress_tags,
+            "item_table": template.get("item_table", "gather")
+        }
+
+    def _calculate_reward(self, template: dict, diff_cfg: dict, player: Player, target: int) -> Dict[str, int]:
+        base_reward = template.get("reward", {"stone": 200, "exp": 2000})
+        stone = base_reward.get("stone", 0)
+        exp = base_reward.get("exp", 0)
+        level_bonus = 1 + max(0, player.level_index - 3) * 0.06
+        progress_factor = max(1, target) / max(1, template.get("min_target", 1))
+        stone_scale = diff_cfg.get("stone_scale", 1.0)
+        exp_scale = diff_cfg.get("exp_scale", 1.0)
+        final_stone = int(stone * stone_scale * progress_factor * level_bonus)
+        final_exp = int(exp * exp_scale * progress_factor * level_bonus)
+        return {"stone": final_stone, "exp": final_exp}
+
+    # -------- 接取与状态 --------
+
+    async def accept_bounty(self, player: Player, bounty_id: int) -> Tuple[bool, str]:
+        if bounty_id <= 0:
             return False, "无效的悬赏编号。"
-        
-        # 从缓存获取任务数据
+
+        template = self.templates_by_id.get(bounty_id)
+        if not template:
+            return False, "该悬赏已失效，请刷新列表。"
+
+        diff_key = template.get("difficulty", "easy")
+        diff_cfg = self.difficulties.get(diff_key, {})
         cached_bounties = self._get_cached_bounties(player.user_id)
-        cached_bounty = None
+        cached = None
         if cached_bounties:
-            cached_bounty = next((b for b in cached_bounties if b["id"] == bounty_id), None)
-        
-        if cached_bounty:
-            count = cached_bounty["count"]
-            reward = cached_bounty["reward"]
-        else:
-            level_multiplier = 1 + (player.level_index // 5) * 0.5
-            count = random.randint(template["min_count"], template["max_count"])
-            reward = int(template["base_reward"] * level_multiplier * (count / template["min_count"]))
-        
-        # 使用事务保护，防止并发重复接取
+            cached = next((b for b in cached_bounties if b["id"] == bounty_id), None)
+        if not cached:
+            return False, "⚠️ 悬赏列表已刷新，请先发送 /悬赏令 重新查看后再接取。"
+
+        now = int(time.time())
+        time_limit = cached.get("time_limit", template.get("time_limit", 3600))
+
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            # 事务内再次检查是否已有进行中的任务
             active = await self.db.ext.get_active_bounty(player.user_id)
             if active:
                 await self.db.conn.rollback()
                 return False, f"你已有进行中的悬赏：{active['bounty_name']}，请先完成或放弃。"
-            
-            # 检查放弃冷却
+
             cd_key = f"bounty_abandon_cd_{player.user_id}"
             cd_value = await self.db.ext.get_system_config(cd_key)
             if cd_value:
                 cd_time = int(cd_value)
-                now = int(time.time())
                 if now < cd_time:
                     await self.db.conn.rollback()
-                    remaining = (cd_time - now) // 60
-                    return False, f"你刚放弃了悬赏任务，还需等待 {remaining} 分钟才能接取新任务。"
-            
-            expire_time = int(time.time()) + template["cooldown"]
-            rewards_json = json.dumps({"stone": reward, "exp": reward * 10})
-            
-            # 直接在事务内插入，不调用会自动commit的方法
+                    remaining = (cd_time - now) // 60 or 1
+                    return False, f"你刚放弃过悬赏，还需等待 {remaining} 分钟才能再次接取。"
+
+            expire_time = now + time_limit
+            rewards_json = json.dumps({
+                "stone": cached["reward"]["stone"],
+                "exp": cached["reward"]["exp"],
+                "difficulty": diff_key,
+                "difficulty_name": cached.get("difficulty_name", diff_key),
+                "item_table": cached.get("item_table"),
+                "description": cached.get("description", ""),
+                "progress_tags": cached.get("progress_tags", [])
+            }, ensure_ascii=False)
+
             await self.db.conn.execute(
                 """
                 INSERT INTO bounty_tasks (
-                    user_id, bounty_id, bounty_name, target_type, 
-                    target_count, current_progress, rewards, 
+                    user_id, bounty_id, bounty_name, target_type,
+                    target_count, current_progress, rewards,
                     start_time, expire_time, status
                 ) VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, 1)
                 """,
-                (player.user_id, bounty_id, template["name"], template["type"], 
-                 count, rewards_json, int(time.time()), expire_time)
+                (
+                    player.user_id,
+                    bounty_id,
+                    template["name"],
+                    cached.get("category", template.get("category", "任务")),
+                    cached["count"],
+                    rewards_json,
+                    now,
+                    expire_time
+                )
             )
             await self.db.conn.commit()
-            
-            return True, (
-                f"🎯 接取悬赏成功！\n"
-                f"任务：{template['name']}\n"
-                f"目标：完成 {count} 次\n"
-                f"奖励：{reward:,} 灵石 + {reward * 10:,} 修为\n"
-                f"时限：{template['cooldown'] // 60} 分钟"
-            )
         except Exception:
             await self.db.conn.rollback()
             raise
-    
+
+        return True, (
+            f"🎯 接取悬赏成功！\n"
+            f"任务：{template['name']}（{cached.get('difficulty_name', diff_key)}）\n"
+            f"目标：完成 {cached['count']} 次\n"
+            f"奖励：{cached['reward']['stone']:,} 灵石 + {cached['reward']['exp']:,} 修为\n"
+            f"时限：{time_limit // 60} 分钟"
+        )
+
     async def check_bounty_status(self, player: Player) -> Tuple[bool, str]:
-        """查看悬赏任务状态"""
         active = await self.db.ext.get_active_bounty(player.user_id)
         if not active:
             return False, "你当前没有进行中的悬赏任务。\n使用 /悬赏令 查看可接取的任务。"
-        
-        progress = active["current_progress"]
-        target = active["target_count"]
-        expire_time = active["expire_time"]
-        remaining = max(0, expire_time - int(time.time()))
-        
+
         rewards = json.loads(active["rewards"])
-        
+        remaining = max(0, active["expire_time"] - int(time.time()))
+        progress = active.get("current_progress", 0)
+        target = active.get("target_count", 1)
+
+        diff_name = rewards.get("difficulty_name", rewards.get("difficulty", "未知"))
+        desc = rewards.get("description", "")
+
         return True, (
-            f"📜 当前悬赏\n"
+            f"📜 当前悬赏（{diff_name}）\n"
             f"━━━━━━━━━━━━━━━\n"
             f"任务：{active['bounty_name']}\n"
+            f"说明：{desc}\n"
             f"进度：{progress}/{target}\n"
             f"奖励：{rewards.get('stone', 0):,} 灵石 + {rewards.get('exp', 0):,} 修为\n"
             f"剩余时间：{remaining // 60} 分钟\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"💡 使用 /完成悬赏 提交任务"
+            f"💡 完成后使用 /完成悬赏 领取奖励"
         )
-    
+
     async def complete_bounty(self, player: Player) -> Tuple[bool, str]:
-        """完成悬赏任务（事务保护）"""
-        # 使用事务保护，防止并发领取和奖励发放不一致
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            # 重新获取任务状态（事务内）
             active = await self.db.ext.get_active_bounty(player.user_id)
             if not active:
                 await self.db.conn.rollback()
                 return False, "你当前没有进行中的悬赏任务。"
-            
-            # 检查是否超时
+
             if int(time.time()) > active["expire_time"]:
                 await self.db.conn.execute(
                     "UPDATE bounty_tasks SET status = 0 WHERE user_id = ? AND status = 1",
@@ -217,8 +291,7 @@ class BountyManager:
                 )
                 await self.db.conn.commit()
                 return False, "悬赏任务已超时，自动取消。"
-            
-            # 检查任务进度是否达到目标
+
             progress = active.get("current_progress", 0)
             target = active.get("target_count", 1)
             if progress < target:
@@ -228,200 +301,152 @@ class BountyManager:
                     f"任务：{active['bounty_name']}\n"
                     f"进度：{progress}/{target}\n"
                     f"━━━━━━━━━━━━━━━\n"
-                    f"💡 通过历练、秘境探索等方式完成任务目标"
+                    f"💡 通过历练或秘境推进悬赏进度"
                 )
-            
+
             rewards = json.loads(active["rewards"])
             stone_reward = rewards.get("stone", 0)
             exp_reward = rewards.get("exp", 0)
-            
-            # 先标记任务完成（防止并发重复领取）
+
             await self.db.conn.execute(
                 "UPDATE bounty_tasks SET status = 2 WHERE user_id = ? AND status = 1",
                 (player.user_id,)
             )
-            
-            # 发放奖励（带整数溢出保护）
-            MAX_VALUE = 2**63 - 1  # SQLite INTEGER 最大值
+
+            MAX_VALUE = 2**63 - 1
             player.gold = min(player.gold + stone_reward, MAX_VALUE)
             player.experience = min(player.experience + exp_reward, MAX_VALUE)
             await self.db.conn.execute(
                 "UPDATE players SET gold = ?, experience = ? WHERE user_id = ?",
                 (player.gold, player.experience, player.user_id)
             )
-            
-            # 提交事务
             await self.db.conn.commit()
-            
-        except Exception as e:
+        except Exception:
             await self.db.conn.rollback()
             raise
-        
-        # 物品奖励（事务外处理，失败不影响主奖励）
+
         item_msg = ""
         if self.storage_ring_manager:
             try:
-                bounty_type = active.get("target_type", "gather")
-                dropped_items = await self._roll_bounty_items(player, bounty_type)
+                rewards = json.loads(active["rewards"])
+                item_table = rewards.get("item_table") or active.get("target_type", "gather")
+                dropped_items = await self._roll_bounty_items(player, item_table)
                 if dropped_items:
-                    item_lines = []
+                    lines = []
                     for item_name, count in dropped_items:
                         success, _ = await self.storage_ring_manager.store_item(player, item_name, count, silent=True)
                         if success:
-                            item_lines.append(f"  · {item_name} x{count}")
+                            lines.append(f"  · {item_name} x{count}")
                         else:
-                            item_lines.append(f"  · {item_name} x{count}（储物戒已满，丢失）")
-                    if item_lines:
-                        item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
+                            lines.append(f"  · {item_name} x{count}（储物戒已满，丢失）")
+                    if lines:
+                        item_msg = "\n\n📦 获得物品：\n" + "\n".join(lines)
             except Exception:
-                pass
-        
+                logger.warning("悬赏物品奖励发放异常", exc_info=True)
+
+        rewards = json.loads(active["rewards"])
+        diff_name = rewards.get("difficulty_name", rewards.get("difficulty", "未知"))
         return True, (
-            f"✅ 悬赏完成！\n"
+            f"✅ 悬赏完成（{diff_name}）！\n"
             f"任务：{active['bounty_name']}\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"获得灵石：+{stone_reward:,}\n"
-            f"获得修为：+{exp_reward:,}{item_msg}"
+            f"获得灵石：+{rewards.get('stone', 0):,}\n"
+            f"获得修为：+{rewards.get('exp', 0):,}{item_msg}"
         )
-    
+
     async def abandon_bounty(self, player: Player) -> Tuple[bool, str]:
-        """放弃悬赏任务（带冷却惩罚）"""
         active = await self.db.ext.get_active_bounty(player.user_id)
         if not active:
             return False, "你当前没有进行中的悬赏任务。"
-        
-        # 放弃任务后设置30分钟冷却（防止刷取高奖励任务）
+
         await self.db.ext.cancel_bounty(player.user_id)
-        
-        # 记录放弃时间用于冷却检查
-        abandon_cooldown = int(time.time()) + 1800  # 30分钟冷却
-        cd_key = f"bounty_abandon_cd_{player.user_id}"
-        await self.db.ext.set_system_config(cd_key, str(abandon_cooldown))
-        
+        abandon_cooldown = int(time.time()) + 1800
+        await self.db.ext.set_system_config(f"bounty_abandon_cd_{player.user_id}", str(abandon_cooldown))
         return True, f"已放弃悬赏：{active['bounty_name']}\n⚠️ 30分钟内无法接取新悬赏"
-    
-    async def _roll_bounty_items(self, player: Player, bounty_type: str) -> List[Tuple[str, int]]:
-        """
-        根据悬赏类型随机掉落物品
-        
-        Args:
-            player: 玩家对象
-            bounty_type: 悬赏类型
-            
-        Returns:
-            掉落物品列表 [(物品名, 数量), ...]
-        """
-        dropped_items = []
-        
-        # 获取对应类型的掉落表
-        drop_table = BOUNTY_ITEM_REWARDS.get(bounty_type, BOUNTY_ITEM_REWARDS["gather"])
-        
-        # 悬赏完成70%概率获得物品
-        if random.randint(1, 100) > 70:
+
+    # -------- 进度与奖励 --------
+
+    async def _roll_bounty_items(self, player: Player, table_name: str) -> List[Tuple[str, int]]:
+        dropped_items: List[Tuple[str, int]] = []
+        drop_table = self.item_tables.get(table_name, self.item_tables.get("gather", []))
+        if not drop_table or random.randint(1, 100) > 70:
             return dropped_items
-        
-        # 加权随机选择物品
+
         total_weight = sum(item["weight"] for item in drop_table)
         roll = random.randint(1, total_weight)
-        
-        current_weight = 0
+        upto = 0
+        chosen = drop_table[0]
         for item in drop_table:
-            current_weight += item["weight"]
-            if roll <= current_weight:
-                count = random.randint(item["min"], item["max"])
-                dropped_items.append((item["name"], count))
+            upto += item["weight"]
+            if roll <= upto:
+                chosen = item
                 break
-        
+
+        count = random.randint(chosen["min"], chosen["max"])
+        dropped_items.append((chosen["name"], count))
         return dropped_items
-    
-    async def add_bounty_progress(self, player: Player, activity_type: str, count: int = 1) -> Tuple[bool, str]:
-        """
-        根据活动类型增加悬赏进度（带输入验证和并发保护）
-        
-        Args:
-            player: 玩家对象
-            activity_type: 活动类型 (adventure/rift/kill/gather/explore/escort/collect)
-            count: 增加的进度数量（必须为正整数，最大为10）
-            
-        Returns:
-            (是否有进度更新, 消息)
-        """
-        # 输入验证：防止负数、零、超大值
+
+    async def add_bounty_progress(self, player: Player, activity_tag: str, count: int = 1) -> Tuple[bool, str]:
+        """根据活动标签推进悬赏"""
         if not isinstance(count, int) or count <= 0:
             return False, ""
-        count = min(count, 10)  # 单次最多增加10进度，防止刷取
-        
-        # 活动类型白名单验证
-        type_mapping = {
-            "adventure": ["kill", "gather", "explore"],
-            "rift": ["explore"],
-            "kill": ["kill"],
-            "gather": ["gather"],
-            "explore": ["explore"],
-            "escort": ["escort"],
-            "collect": ["collect"],
-        }
-        if activity_type not in type_mapping:
+        count = min(count, 10)
+        activity_tag = (activity_tag or "").strip().lower()
+        if not activity_tag:
             return False, ""
-        
-        # 使用事务保护，防止并发刷进度
+
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            # 事务内获取最新状态
             active = await self.db.ext.get_active_bounty(player.user_id)
             if not active:
                 await self.db.conn.rollback()
                 return False, ""
-            
-            # 检查是否超时
+
             if int(time.time()) > active["expire_time"]:
                 await self.db.conn.rollback()
                 return False, ""
-            
-            bounty_type = active.get("target_type", "")
-            current_progress = active.get("current_progress", 0)
+
+            rewards_data = {}
+            try:
+                rewards_data = json.loads(active["rewards"])
+            except Exception:
+                rewards_data = {}
+
+            template = self.templates_by_id.get(active["bounty_id"])
+            if template:
+                allowed_tags = template.get("progress_tags", [])
+            else:
+                allowed_tags = [str(tag).lower() for tag in rewards_data.get("progress_tags", [])]
+
+            if activity_tag not in allowed_tags:
+                await self.db.conn.rollback()
+                return False, ""
+
+            progress = active.get("current_progress", 0)
             target = active.get("target_count", 1)
-            
-            # 如果已完成则不再增加
-            if current_progress >= target:
+            if progress >= target:
                 await self.db.conn.rollback()
                 return False, ""
-            
-            valid_types = type_mapping.get(activity_type, [])
-            if bounty_type not in valid_types:
-                await self.db.conn.rollback()
-                return False, ""
-            
-            # 原子更新进度（使用SQL计算，防止TOCTOU）
-            new_progress = min(current_progress + count, target)
+
+            new_progress = min(target, progress + count)
             await self.db.conn.execute(
                 "UPDATE bounty_tasks SET current_progress = ? WHERE user_id = ? AND status = 1 AND current_progress = ?",
-                (new_progress, player.user_id, current_progress)
+                (new_progress, player.user_id, progress)
             )
             await self.db.conn.commit()
-            
+
             if new_progress >= target:
                 return True, f"\n\n📜 悬赏【{active['bounty_name']}】已完成！使用 /完成悬赏 领取奖励"
-            else:
-                return True, f"\n\n📜 悬赏进度：{new_progress}/{target}"
+            return True, f"\n\n📜 悬赏进度：{new_progress}/{target}"
         except Exception:
             await self.db.conn.rollback()
             raise
-    
+
     async def check_and_expire_bounties(self) -> int:
-        """检查并处理过期悬赏任务
-        
-        Returns:
-            处理的过期任务数量
-        """
         now = int(time.time())
-        
-        # 将过期的进行中任务标记为失败(status=3)
         cursor = await self.db.conn.execute(
             "UPDATE bounty_tasks SET status = 3 WHERE status = 1 AND expire_time < ?",
             (now,)
         )
         await self.db.conn.commit()
-        
-        # 返回受影响的行数
         return cursor.rowcount

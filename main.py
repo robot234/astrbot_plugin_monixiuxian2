@@ -957,8 +957,8 @@ class XiuXianPlugin(Star):
     # ===== 历练指令 =====
     @filter.command(CMD_ADVENTURE_START, "开始历练")
     @require_whitelist
-    async def handle_adventure_start(self, event: AstrMessageEvent):
-        async for r in self.adventure_handlers.handle_start_adventure(event, "medium"):
+    async def handle_adventure_start(self, event: AstrMessageEvent, route: str = ""):
+        async for r in self.adventure_handlers.handle_start_adventure(event, route):
             yield r
 
     @filter.command(CMD_ADVENTURE_COMPLETE, "完成历练")
@@ -971,7 +971,9 @@ class XiuXianPlugin(Star):
         if success and reward_data:
             player = await self.db.get_player_by_id(user_id)
             if player:
-                has_progress, bounty_msg = await self.bounty_mgr.add_bounty_progress(player, "adventure", 1)
+                bounty_tag = reward_data.get("bounty_tag", "adventure")
+                bounty_value = reward_data.get("bounty_progress", 1)
+                has_progress, bounty_msg = await self.bounty_mgr.add_bounty_progress(player, bounty_tag, bounty_value)
                 if has_progress:
                     msg += bounty_msg
         
