@@ -311,6 +311,7 @@ class XiuXianPlugin(Star):
         
         while True:
             try:
+                await self.db.ensure_connection()
                 interval = self.config_manager.boss_config.get("spawn_interval", 3600)
                 
                 # 检查是否有存储的下次刷新时间
@@ -434,6 +435,7 @@ class XiuXianPlugin(Star):
         
         while True:
             try:
+                await self.db.ensure_connection()
                 # 每小时检查一次逾期贷款
                 await asyncio.sleep(3600)
                 
@@ -503,6 +505,7 @@ class XiuXianPlugin(Star):
         
         while True:
             try:
+                await self.db.ensure_connection()
                 # 每2小时生成一个灵眼
                 spawn_interval = 7200
                 
@@ -547,6 +550,7 @@ class XiuXianPlugin(Star):
         """悬赏过期检查定时任务（每30分钟检查一次）"""
         while True:
             try:
+                await self.db.ensure_connection()
                 await asyncio.sleep(1800)  # 30分钟
                 expired = await self.bounty_mgr.check_and_expire_bounties()
                 if expired > 0:

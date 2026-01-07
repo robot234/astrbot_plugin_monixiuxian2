@@ -4,7 +4,7 @@
   <img src="logo.png" alt="模拟修仙" width="200">
 </p>
 
-> **版本:** v3.1.2  
+> **版本:** v3.1.3  
 > **许可证:** AGPL-3.0  
 > **作者:** xiaojuwa  
 > **基于:** [nonebot_plugin_xiuxian_2](https://github.com/xiuxian-2/nonebot_plugin_xiuxian_2) (部分借鉴与重构)
@@ -506,6 +506,10 @@ astrbot_plugin_monixiuxian2/
 | 传承buff应用 | combat_handlers.py | impart加成已应用到战斗 |
 
 ---
+
+### v3.1.3 - 数据库连接自动恢复
+- 修复世界Boss/灵眼等定时任务在数据库连接意外断开后持续报错 `no active connection` 的问题
+- 新增数据库自动重连与定时任务保活逻辑，保证所有后台任务可自动恢复
 
 ### v3.1.2 - 悬赏时限自适应
 - 根据历练路线的真实时长自动放宽悬赏时限，确保巡山/猎魔等任务在限定时间内可完成

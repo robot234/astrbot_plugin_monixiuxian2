@@ -29,7 +29,30 @@ class DataBase:
     async def close(self):
         """关闭数据库连接"""
         if self.conn:
-            await self.conn.close()
+            try:
+                await self.conn.close()
+            finally:
+                self.conn = None
+                self.ext = None
+
+    async def reconnect(self):
+        """重连数据库（用于连接意外断开时）"""
+        await self.close()
+        await self.connect()
+
+    def _connection_alive(self) -> bool:
+        """检测底层aiosqlite连接是否仍然可用"""
+        if not self.conn:
+            return False
+        # aiosqlite Connection 在 close 后会将 _connection 置为 None
+        return getattr(self.conn, "_connection", None) is not None
+
+    async def ensure_connection(self):
+        """确保数据库连接可用，必要时自动重连"""
+        if self._connection_alive():
+            return
+        logger.warning("[database] 检测到数据库连接断开，正在自动重连...")
+        await self.reconnect()
 
     async def create_player(self, player: Player):
         """创建新玩家"""
