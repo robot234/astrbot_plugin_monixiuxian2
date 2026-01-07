@@ -4,7 +4,7 @@
   <img src="logo.png" alt="模拟修仙" width="200">
 </p>
 
-> **版本:** v3.1.1  
+> **版本:** v3.1.2  
 > **许可证:** AGPL-3.0  
 > **作者:** xiaojuwa  
 > **基于:** [nonebot_plugin_xiuxian_2](https://github.com/xiuxian-2/nonebot_plugin_xiuxian_2) (部分借鉴与重构)
@@ -506,6 +506,10 @@ astrbot_plugin_monixiuxian2/
 | 传承buff应用 | combat_handlers.py | impart加成已应用到战斗 |
 
 ---
+
+### v3.1.2 - 悬赏时限自适应
+- 根据历练路线的真实时长自动放宽悬赏时限，确保巡山/猎魔等任务在限定时间内可完成
+- 历练路线映射的疲劳信息同时用于推算缓冲时间，避免路线无法连续接取导致的“必失败”任务
 
 ### v3.1.1 - 历练/悬赏问题修复
 - 历练结算将根据路线限定的计划时长发放奖励，延迟领取不再无限放大收益

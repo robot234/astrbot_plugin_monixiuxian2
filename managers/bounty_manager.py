@@ -23,6 +23,7 @@ class BountyManager:
 
     BOUNTY_CACHE_DURATION = 600  # 任务列表缓存10分钟
     CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "bounty_templates.json"
+    ADVENTURE_CONFIG_FILE = Path(__file__).resolve().parents[1] / "config" / "adventure_config.json"
     DEFAULT_CONFIG = {
         "difficulties": {
             "easy": {"name": "F级", "stone_scale": 1.0, "exp_scale": 1.0, "min_level": 0}
@@ -59,6 +60,7 @@ class BountyManager:
         self.templates_by_id: Dict[int, dict] = {}
         self.templates_by_diff: Dict[str, List[dict]] = {}
         self.item_tables: Dict[str, List[dict]] = {}
+        self.adventure_tag_meta: Dict[str, Dict[str, int]] = {}
         self.reload_config()
 
     # -------- 配置 --------
@@ -75,6 +77,7 @@ class BountyManager:
             self.templates_by_id[tpl_copy["id"]] = tpl_copy
             self.templates_by_diff.setdefault(tpl_copy["difficulty"], []).append(tpl_copy)
         logger.info(f"悬赏配置加载完成：{len(self.templates_by_id)} 条模板")
+        self._load_adventure_meta()
 
     def _load_config_file(self) -> dict:
         if self.CONFIG_FILE.exists():
@@ -84,6 +87,25 @@ class BountyManager:
             except Exception as exc:
                 logger.error(f"加载 bounty_templates.json 失败，将使用默认配置: {exc}")
         return self.DEFAULT_CONFIG
+
+    def _load_adventure_meta(self):
+        self.adventure_tag_meta = {}
+        if not self.ADVENTURE_CONFIG_FILE.exists():
+            return
+        try:
+            with open(self.ADVENTURE_CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for route in data.get("routes", []):
+                tag = str(route.get("bounty_tag", "")).lower()
+                if not tag:
+                    continue
+                self.adventure_tag_meta[tag] = {
+                    "duration": int(route.get("duration", 3600)),
+                    "fatigue": int(route.get("fatigue_cooldown", 0))
+                }
+            logger.info("已加载冒险路线元数据用于悬赏校准")
+        except Exception as exc:
+            logger.warning(f"加载冒险路线配置失败，将使用默认时限: {exc}")
 
     # -------- 列表 & 缓存 --------
 
@@ -144,6 +166,7 @@ class BountyManager:
         target = random.randint(template.get("min_target", 1), template.get("max_target", 1))
         reward = self._calculate_reward(template, diff_cfg, player, target)
         progress_tags = [str(tag).lower() for tag in template.get("progress_tags", [])]
+        time_limit = self._calculate_time_limit(template, target)
         return {
             "id": template["id"],
             "name": template["name"],
@@ -153,7 +176,7 @@ class BountyManager:
             "description": template.get("description", ""),
             "count": target,
             "reward": reward,
-            "time_limit": template.get("time_limit", 3600),
+            "time_limit": time_limit,
             "progress_tags": progress_tags,
             "item_table": template.get("item_table", "gather")
         }
@@ -169,6 +192,28 @@ class BountyManager:
         final_stone = int(stone * stone_scale * progress_factor * level_bonus)
         final_exp = int(exp * exp_scale * progress_factor * level_bonus)
         return {"stone": final_stone, "exp": final_exp}
+
+    def _calculate_time_limit(self, template: dict, target: int) -> int:
+        base_limit = template.get("time_limit", 3600)
+        unit = self._get_adventure_unit_time(template)
+        if not unit:
+            return base_limit
+        # 预估完成所有进度所需的最小时间
+        expected = unit * target
+        # 追加容错缓冲，兼顾疲劳与队列
+        buffer = max(600, unit // 2)
+        return max(base_limit, expected + buffer)
+
+    def _get_adventure_unit_time(self, template: dict) -> Optional[int]:
+        durations = []
+        for tag in template.get("progress_tags", []):
+            meta = self.adventure_tag_meta.get(tag.lower())
+            if meta:
+                # 考虑路线基础时长+部分休整
+                durations.append(meta.get("duration", 0) + meta.get("fatigue", 0))
+        if not durations:
+            return None
+        return max(60, min(durations))
 
     # -------- 接取与状态 --------
 
