@@ -1,4 +1,5 @@
 # handlers/combat_handlers.py
+import re
 import time
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.all import *
@@ -61,11 +62,31 @@ class CombatHandlers:
             logger.warning(f"更新战斗冷却失败: {e}")
 
     async def _get_target_id(self, event: AstrMessageEvent, arg: str) -> str:
-        for component in event.message_obj.message:
+        message_chain = []
+        if hasattr(event, "message_obj") and event.message_obj:
+            message_chain = getattr(event.message_obj, "message", []) or []
+
+        for component in message_chain:
             if isinstance(component, At):
-                return str(component.qq)
-        if arg and arg.isdigit():
-            return arg
+                candidate = None
+                for attr in ("qq", "target", "uin", "user_id"):
+                    candidate = getattr(component, attr, None)
+                    if candidate:
+                        break
+                if candidate:
+                    return str(candidate).lstrip("@")
+
+        if arg:
+            cleaned = arg.strip().lstrip("@")
+            if cleaned.isdigit():
+                return cleaned
+
+        message_text = ""
+        if hasattr(event, "get_message_str"):
+            message_text = event.get_message_str() or ""
+        match = re.search(r'(\d{5,})', message_text)
+        if match:
+            return match.group(1)
         return None
 
     def _calculate_equipment_bonus(self, player) -> dict:

@@ -112,12 +112,18 @@ class DualCultivationManager:
         if target_cd and target_cd.type != UserStatus.IDLE:
             return False, "❌ 对方正忙，无法接受双修请求。"
         
-        # 检查冷却
+        # 检查发起者冷却
         last_dual = await self._get_last_dual_time(initiator.user_id)
         now = int(time.time())
         if last_dual and (now - last_dual) < DUAL_CULT_COOLDOWN:
             remaining = DUAL_CULT_COOLDOWN - (now - last_dual)
             return False, f"❌ 双修冷却中，还需 {remaining // 60} 分钟。"
+
+        # 检查目标冷却
+        target_last_dual = await self._get_last_dual_time(target_id)
+        if target_last_dual and (now - target_last_dual) < DUAL_CULT_COOLDOWN:
+            remaining = DUAL_CULT_COOLDOWN - (now - target_last_dual)
+            return False, f"❌ 对方正在双修冷却，还需 {remaining // 60} 分钟。"
         
         # 发起请求（持久化到数据库）
         await self._create_request(
@@ -149,6 +155,21 @@ class DualCultivationManager:
             await self._delete_request(request["id"])
             return False, f"❌ 双方修为差距已超过限制，双修取消。"
         
+        now = int(time.time())
+
+        # 检查双方冷却时间（防止请求期间冷却尚未结束）
+        acceptor_last_dual = await self._get_last_dual_time(acceptor.user_id)
+        if acceptor_last_dual and (now - acceptor_last_dual) < DUAL_CULT_COOLDOWN:
+            await self._delete_request(request["id"])
+            remaining = DUAL_CULT_COOLDOWN - (now - acceptor_last_dual)
+            return False, f"❌ 你的双修冷却中，还需 {remaining // 60} 分钟。"
+
+        initiator_last_dual = await self._get_last_dual_time(initiator.user_id)
+        if initiator_last_dual and (now - initiator_last_dual) < DUAL_CULT_COOLDOWN:
+            await self._delete_request(request["id"])
+            remaining = DUAL_CULT_COOLDOWN - (now - initiator_last_dual)
+            return False, f"❌ 对方仍在双修冷却，还需 {remaining // 60} 分钟。"
+
         # 计算双修收益
         init_exp_gain = int(acceptor.experience * DUAL_CULT_EXP_BONUS)
         accept_exp_gain = int(initiator.experience * DUAL_CULT_EXP_BONUS)
@@ -160,7 +181,6 @@ class DualCultivationManager:
         await self.db.update_player(acceptor)
         
         # 记录冷却
-        now = int(time.time())
         await self._set_last_dual_time(initiator.user_id, now)
         await self._set_last_dual_time(acceptor.user_id, now)
         
