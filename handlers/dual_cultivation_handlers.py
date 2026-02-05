@@ -2,6 +2,7 @@
 """双修处理器"""
 import re
 from astrbot.api.event import AstrMessageEvent
+from astrbot.api.all import At
 from ..data import DataBase
 from ..managers.dual_cultivation_manager import DualCultivationManager
 from ..models import Player
@@ -20,7 +21,17 @@ class DualCultivationHandlers:
     @player_required
     async def handle_dual_request(self, player: Player, event: AstrMessageEvent, target: str = ""):
         """发起双修"""
-        target_id = self._extract_user_id(target)
+        # 尝试从 message chain 中获取 at
+        target_id = None
+        for component in event.message_obj.message:
+            if isinstance(component, At):
+                target_id = str(component.qq) # 假设是 QQ 适配器
+                break
+        
+        if not target_id:
+            # 尝试从 target 参数中提取
+            target_id = self._extract_user_id(target)
+        
         if not target_id:
             yield event.plain_result(
                 "💕 双修系统\n"

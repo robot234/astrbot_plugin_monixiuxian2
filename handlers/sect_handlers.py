@@ -138,3 +138,9 @@ class SectHandlers:
         user_id = event.get_sender_id()
         success, msg = await self.sect_mgr.perform_sect_task(user_id)
         yield event.plain_result(msg)
+
+    async def handle_finish_sect_task(self, event: AstrMessageEvent):
+        """完成宗门任务（解决卡住的情况）"""
+        user_id = event.get_sender_id()
+        success, msg = await self.sect_mgr.finish_sect_task(user_id)
+        yield event.plain_result(msg)

@@ -101,7 +101,12 @@
             "add_mental_power": 30,
             "add_breakthrough_bonus": 0.1
         },
-        "shop_weight": 100
+        "shop_weight": 100,
+        "duration_minutes": 60,
+        "subtype": "breakthrough_boost",
+        "required_level_index": 0,
+        "effect_type": "temporary",
+        "breakthrough_bonus": 0.1
     },
     "1010": {
         "name": "四品玉髓丹",
@@ -143,7 +148,12 @@
             "add_defense": 8,
             "add_breakthrough_bonus": 0.15
         },
-        "shop_weight": 100
+        "shop_weight": 100,
+        "duration_minutes": 60,
+        "subtype": "breakthrough_boost",
+        "required_level_index": 0,
+        "effect_type": "temporary",
+        "breakthrough_bonus": 0.15
     },
     "1013": {
         "name": "五品紫金丹",
@@ -187,7 +197,12 @@
             "add_defense": 40,
             "add_breakthrough_bonus": 0.2
         },
-        "shop_weight": 100
+        "shop_weight": 100,
+        "duration_minutes": 60,
+        "subtype": "breakthrough_boost",
+        "required_level_index": 0,
+        "effect_type": "temporary",
+        "breakthrough_bonus": 0.2
     },
     "1016": {
         "name": "六品造化丹",
@@ -233,7 +248,12 @@
             "add_defense": 100,
             "add_breakthrough_bonus": 0.25
         },
-        "shop_weight": 100
+        "shop_weight": 100,
+        "duration_minutes": 60,
+        "subtype": "breakthrough_boost",
+        "required_level_index": 0,
+        "effect_type": "temporary",
+        "breakthrough_bonus": 0.25
     },
     "1019": {
         "name": "七品太乙丹",

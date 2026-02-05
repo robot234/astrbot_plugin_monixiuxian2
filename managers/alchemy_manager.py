@@ -213,12 +213,17 @@ class AlchemyManager:
         # 扣除储物戒中的材料
         consumed_materials = []
         if self.storage_ring_manager:
+            items = player.get_storage_ring_items()
             for material_name, required_count in materials.items():
                 if material_name == "灵石":
                     continue
-                success, _ = await self.storage_ring_manager.retrieve_item(player, material_name, required_count)
-                if success:
+                if material_name in items and items[material_name] >= required_count:
+                    if items[material_name] == required_count:
+                        del items[material_name]
+                    else:
+                        items[material_name] -= required_count
                     consumed_materials.append(f"{material_name}×{required_count}")
+            player.set_storage_ring_items(items)
         
         # 6. 判断成功率
         success_rate = recipe["success_rate"]

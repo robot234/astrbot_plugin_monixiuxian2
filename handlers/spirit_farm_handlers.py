@@ -41,11 +41,30 @@ class SpiritFarmHandlers:
                 "火焰花 - 8小时 (修为+10000)\n"
                 "九叶灵芝 - 24小时 (修为+30000)\n"
                 "━━━━━━━━━━━━━━━\n"
-                "💡 使用 /种植 <灵草名>"
+                "💡 使用 /种植 <灵草名> 或 /种植 <灵草名><数量> 或 /种植 <灵草名> <数量>"
             )
             return
         
-        success, msg = await self.mgr.plant_herb(player, herb_name.strip())
+        # 解析数量后缀
+        import re
+        # 支持两种格式：灵草6 或 灵草 6
+        match = re.match(r"(.*?)(\d+)$", herb_name.strip())
+        if match:
+            name = match.group(1).strip()
+            count = int(match.group(2))
+            count = max(1, count)  # 至少种植1株
+        else:
+            # 检查是否有空格分隔的数量
+            parts = herb_name.strip().split()
+            if len(parts) == 2 and parts[1].isdigit():
+                name = parts[0].strip()
+                count = int(parts[1])
+                count = max(1, count)
+            else:
+                name = herb_name.strip()
+                count = 1
+        
+        success, msg = await self.mgr.plant_herb(player, name, count)
         yield event.plain_result(msg)
     
     @player_required

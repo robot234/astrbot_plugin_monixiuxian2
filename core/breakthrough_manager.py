@@ -117,6 +117,8 @@ class BreakthroughManager:
         Args:
             player: 玩家对象
             pill_name: 使用的破境丹名称（可选）
+            temp_bonus: 临时成功率加成
+            death_rate_multiplier: 死亡率倍率
 
         Returns:
             (是否成功, 消息, 是否死亡)
@@ -146,30 +148,60 @@ class BreakthroughManager:
             old_level_index = player.level_index
             player.level_index = next_level_index
 
-            # 直接从下一境界配置中读取突破增量，并累加到玩家属性上
-            # 这样可以保留玩家初始化时的随机属性值
+            # 直接从下一境界配置中读取突破增量
             lifespan_gain = next_level_data.get("breakthrough_lifespan_gain", 0)
             mental_power_gain = next_level_data.get("breakthrough_mental_power_gain", 0)
             physical_damage_gain = next_level_data.get("breakthrough_physical_damage_gain", 0)
             magic_damage_gain = next_level_data.get("breakthrough_magic_damage_gain", 0)
             physical_defense_gain = next_level_data.get("breakthrough_physical_defense_gain", 0)
             magic_defense_gain = next_level_data.get("breakthrough_magic_defense_gain", 0)
+            
+            # 战斗属性增益
+            hp_gain = next_level_data.get("breakthrough_hp_gain", 0)
+            mp_gain = next_level_data.get("breakthrough_mp_gain", 0)
+            speed_gain = next_level_data.get("breakthrough_speed_gain", 0)
 
             # 根据修炼类型处理灵气/气血增长
             if player.cultivation_type == "体修":
-                # 体修使用气血
                 blood_qi_gain = next_level_data.get("breakthrough_blood_qi_gain", 0)
-                player.max_blood_qi += blood_qi_gain
-                player.blood_qi = player.max_blood_qi  # 恢复满气血
                 energy_name = "气血"
                 energy_gain = blood_qi_gain
             else:
-                # 灵修使用灵气
                 spiritual_qi_gain = next_level_data.get("breakthrough_spiritual_qi_gain", 0)
-                player.max_spiritual_qi += spiritual_qi_gain
-                player.spiritual_qi = player.max_spiritual_qi  # 恢复满灵气
                 energy_name = "灵气"
                 energy_gain = spiritual_qi_gain
+
+            # 获取功法配置并应用成长修正
+            technique_config = None
+            modifiers = {}
+            modifier_info = ""
+            
+            if player.main_technique:
+                technique_config = self.config_manager.get_technique_by_name(player.main_technique)
+                if technique_config:
+                    modifiers = technique_config.get("growth_modifiers", {})
+                    technique_name = technique_config.get("name", player.main_technique)
+                    
+                    # 应用功法成长修正
+                    lifespan_gain = int(lifespan_gain * modifiers.get("lifespan", 1.0))
+                    mental_power_gain = int(mental_power_gain * modifiers.get("mental_power", 1.0))
+                    physical_damage_gain = int(physical_damage_gain * modifiers.get("physical_attack", 1.0))
+                    magic_damage_gain = int(magic_damage_gain * modifiers.get("magic_attack", 1.0))
+                    physical_defense_gain = int(physical_defense_gain * modifiers.get("physical_defense", 1.0))
+                    magic_defense_gain = int(magic_defense_gain * modifiers.get("magic_defense", 1.0))
+                    hp_gain = int(hp_gain * modifiers.get("hp", 1.0))
+                    mp_gain = int(mp_gain * modifiers.get("mp", 1.0))
+                    speed_gain = int(speed_gain * modifiers.get("speed", 1.0))
+                    
+                    if player.cultivation_type == "体修":
+                        blood_qi_gain = int(blood_qi_gain * modifiers.get("blood_qi", modifiers.get("hp", 1.0)))
+                        energy_gain = blood_qi_gain
+                    else:
+                        spiritual_qi_gain = int(spiritual_qi_gain * modifiers.get("spiritual_qi", modifiers.get("mp", 1.0)))
+                        energy_gain = spiritual_qi_gain
+                    
+                    # 生成修正信息
+                    modifier_info = f"\n💫 功法【{technique_name}】成长加成生效！"
 
             # 应用属性增长
             player.lifespan += lifespan_gain
@@ -178,6 +210,21 @@ class BreakthroughManager:
             player.physical_defense += physical_defense_gain
             player.magic_defense += magic_defense_gain
             player.mental_power += mental_power_gain
+            
+            # 应用战斗属性增长
+            player.max_hp += hp_gain
+            player.hp = player.max_hp  # 恢复满HP
+            player.max_mp += mp_gain
+            player.mp = player.max_mp  # 恢复满MP
+            player.speed += speed_gain
+
+            # 根据修炼类型应用灵气/气血增长
+            if player.cultivation_type == "体修":
+                player.max_blood_qi += blood_qi_gain
+                player.blood_qi = player.max_blood_qi  # 恢复满气血
+            else:
+                player.max_spiritual_qi += spiritual_qi_gain
+                player.spiritual_qi = player.max_spiritual_qi  # 恢复满灵气
 
             # 保存到数据库
             await self.db.update_player(player)
@@ -193,20 +240,26 @@ class BreakthroughManager:
                     f"{rate_info}\n"
                     f"━━━━━━━━━━━━━━━\n"
                     f"恭喜你从【{current_level_name}】突破至【{next_level_name}】！\n"
-                    f"境界提升，肉身更加强横！\n"
+                    f"境界提升，肉身更加强横！{modifier_info}\n"
                     f"\n【属性增长】\n"
                     f"寿命 +{lifespan_gain}\n"
                     f"最大气血 +{energy_gain}\n"
+                    f"最大HP +{hp_gain}\n"
+                    f"最大MP +{mp_gain}\n"
                     f"物伤 +{physical_damage_gain}\n"
                     f"物防 +{physical_defense_gain}\n"
                     f"法防 +{magic_defense_gain}\n"
+                    f"速度 +{speed_gain}\n"
                     f"精神力 +{mental_power_gain}\n"
                     f"\n【当前属性】\n"
                     f"寿命：{player.lifespan}\n"
                     f"最大气血：{player.max_blood_qi}\n"
+                    f"HP：{player.hp}/{player.max_hp}\n"
+                    f"MP：{player.mp}/{player.max_mp}\n"
                     f"物伤：{player.physical_damage}\n"
                     f"物防：{player.physical_defense}\n"
                     f"法防：{player.magic_defense}\n"
+                    f"速度：{player.speed}\n"
                     f"精神力：{player.mental_power}"
                 )
             else:
@@ -216,27 +269,34 @@ class BreakthroughManager:
                     f"{rate_info}\n"
                     f"━━━━━━━━━━━━━━━\n"
                     f"恭喜你从【{current_level_name}】突破至【{next_level_name}】！\n"
-                    f"境界提升，实力大增！\n"
+                    f"境界提升，实力大增！{modifier_info}\n"
                     f"\n【属性增长】\n"
                     f"寿命 +{lifespan_gain}\n"
                     f"最大灵气 +{energy_gain}\n"
+                    f"最大HP +{hp_gain}\n"
+                    f"最大MP +{mp_gain}\n"
                     f"法伤 +{magic_damage_gain}\n"
                     f"物伤 +{physical_damage_gain}\n"
                     f"法防 +{magic_defense_gain}\n"
                     f"物防 +{physical_defense_gain}\n"
+                    f"速度 +{speed_gain}\n"
                     f"精神力 +{mental_power_gain}\n"
                     f"\n【当前属性】\n"
                     f"寿命：{player.lifespan}\n"
                     f"最大灵气：{player.max_spiritual_qi}\n"
+                    f"HP：{player.hp}/{player.max_hp}\n"
+                    f"MP：{player.mp}/{player.max_mp}\n"
                     f"法伤：{player.magic_damage}\n"
                     f"物伤：{player.physical_damage}\n"
                     f"法防：{player.magic_defense}\n"
                     f"物防：{player.physical_defense}\n"
+                    f"速度：{player.speed}\n"
                     f"精神力：{player.mental_power}"
                 )
 
             logger.info(
                 f"玩家 {player.user_id} 突破成功：{current_level_name} -> {next_level_name}"
+                f"{' (功法加成: ' + technique_config.get('name', '') + ')' if technique_config else ''}"
             )
             
             # 如果有贷款相关消息，追加到成功消息后

@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 20  # v20: 用户CD表添加额外数据字段
+LATEST_DB_VERSION = 21  # v21: 添加战斗属性和技能系统字段
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -355,7 +355,17 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             storage_ring_items TEXT NOT NULL DEFAULT '{}',
             
             daily_pill_usage TEXT NOT NULL DEFAULT '{}',
-            last_daily_reset TEXT NOT NULL DEFAULT ''
+            last_daily_reset TEXT NOT NULL DEFAULT '',
+            
+            max_hp INTEGER NOT NULL DEFAULT 100,
+            max_mp INTEGER NOT NULL DEFAULT 50,
+            speed INTEGER NOT NULL DEFAULT 10,
+            critical_rate REAL NOT NULL DEFAULT 0.05,
+            critical_damage REAL NOT NULL DEFAULT 1.5,
+            hit_rate REAL NOT NULL DEFAULT 0.95,
+            dodge_rate REAL NOT NULL DEFAULT 0.05,
+            learned_skills TEXT NOT NULL DEFAULT '[]',
+            equipped_skills TEXT NOT NULL DEFAULT '[]'
         )
     """)
 
@@ -459,7 +469,8 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             user_id TEXT PRIMARY KEY,
             type INTEGER NOT NULL DEFAULT 0,
             create_time INTEGER NOT NULL DEFAULT 0,
-            scheduled_time INTEGER NOT NULL DEFAULT 0
+            scheduled_time INTEGER NOT NULL DEFAULT 0,
+            extra_data TEXT NOT NULL DEFAULT '{}'
         )
     """)
     
@@ -498,8 +509,7 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             borrowed_at INTEGER NOT NULL,
             due_at INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'active',
-            loan_type TEXT NOT NULL DEFAULT 'normal',
-            UNIQUE(user_id, status)
+            loan_type TEXT NOT NULL DEFAULT 'normal'
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_loans_user ON bank_loans(user_id)")
@@ -520,7 +530,120 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_user ON bank_transactions(user_id)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_time ON bank_transactions(created_at)")
 
-    logger.info("数据库表已创建完成（v2 - 完整修仙系统）")
+
+    # 添加洞天福地表（v16）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS blessed_lands (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL UNIQUE,
+            land_type INTEGER NOT NULL DEFAULT 1,
+            land_name TEXT NOT NULL DEFAULT '小洞天',
+            level INTEGER NOT NULL DEFAULT 1,
+            exp_bonus REAL NOT NULL DEFAULT 0.05,
+            gold_per_hour INTEGER NOT NULL DEFAULT 100,
+            last_collect_time INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_blessed_lands_user ON blessed_lands(user_id)")
+
+    # 添加灵田表（v16）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS spirit_farms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL UNIQUE,
+            level INTEGER NOT NULL DEFAULT 1,
+            crops TEXT NOT NULL DEFAULT '[]'
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_spirit_farms_user ON spirit_farms(user_id)")
+
+    # 添加双修记录表（v16）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS dual_cultivation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL UNIQUE,
+            last_dual_time INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_dual_user ON dual_cultivation(user_id)")
+
+    # 添加天地灵眼表（v16）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS spirit_eyes (
+            eye_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            eye_type INTEGER NOT NULL DEFAULT 1,
+            eye_name TEXT NOT NULL DEFAULT '下品灵眼',
+            exp_per_hour INTEGER NOT NULL DEFAULT 500,
+            spawn_time INTEGER NOT NULL,
+            owner_id TEXT,
+            owner_name TEXT,
+            claim_time INTEGER,
+            last_collect_time INTEGER
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_spirit_eyes_owner ON spirit_eyes(owner_id)")
+ # 添加双修请求表（v20）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS dual_cultivation_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_id TEXT NOT NULL,
+            from_name TEXT NOT NULL,
+            target_id TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_dual_req_target ON dual_cultivation_requests(target_id)")
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_dual_req_expires ON dual_cultivation_requests(expires_at)")
+
+    # 添加战斗冷却表（v20）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS combat_cooldowns (
+            user_id TEXT PRIMARY KEY,
+            last_duel_time INTEGER NOT NULL DEFAULT 0,
+            last_spar_time INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+
+    # 添加悬赏任务表（v14）
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS bounty_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            bounty_id INTEGER NOT NULL,
+            bounty_name TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            target_count INTEGER NOT NULL,
+            current_progress INTEGER NOT NULL DEFAULT 0,
+            rewards TEXT NOT NULL DEFAULT '{}',
+            start_time INTEGER NOT NULL,
+            expire_time INTEGER NOT NULL,
+            status INTEGER NOT NULL DEFAULT 1
+        )
+    """)
+    await conn.execute("CREATE INDEX IF NOT EXISTS idx_bounty_user ON bounty_tasks(user_id)")
+
+    # 插入初始秘境数据
+    import json
+    import time
+    default_rifts = [
+        (1, "青云秘境", 1, 0, json.dumps({"exp": [500, 1500], "gold": [200, 800]})),
+        (2, "落日峡谷", 2, 3, json.dumps({"exp": [1500, 4000], "gold": [500, 2000]})),
+        (3, "万妖洞", 3, 6, json.dumps({"exp": [3000, 8000], "gold": [1000, 5000]})),
+        (4, "玄冰地宫", 4, 10, json.dumps({"exp": [5000, 15000], "gold": [2000, 10000]})),
+        (5, "上古遗迹", 5, 15, json.dumps({"exp": [10000, 30000], "gold": [5000, 20000]})),
+    ]
+    
+    for rift in default_rifts:
+        try:
+            await conn.execute(
+                "INSERT OR IGNORE INTO rifts (rift_id, rift_name, rift_level, required_level, rewards) VALUES (?, ?, ?, ?, ?)",
+                rift
+            )
+        except Exception as e:
+            logger.error(f"插入秘境数据失败: {str(e)}")
+    
+    logger.info("数据库表已创建完成（v2 - 完整修仙系统），并插入了5个默认秘境")
 
 
 @migration(12)
@@ -867,8 +990,7 @@ async def _migrate_to_v18(conn: aiosqlite.Connection, config_manager: ConfigMana
             borrowed_at INTEGER NOT NULL,
             due_at INTEGER NOT NULL,
             status TEXT NOT NULL DEFAULT 'active',
-            loan_type TEXT NOT NULL DEFAULT 'normal',
-            UNIQUE(user_id, status)
+            loan_type TEXT NOT NULL DEFAULT 'normal'
         )
     """)
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_loans_user ON bank_loans(user_id)")
@@ -988,3 +1110,59 @@ async def _migrate_to_v20(conn: aiosqlite.Connection, config_manager: ConfigMana
     
     await conn.commit()
     logger.info("v20迁移完成：用户CD表添加额外数据字段")
+
+
+@migration(21)
+async def _migrate_to_v21(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v21 - 添加战斗属性和技能系统字段"""
+    logger.info("开始迁移到v21：添加战斗属性和技能系统字段")
+    
+    # 添加战斗属性字段
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER DEFAULT 100")
+    except Exception as e:
+        logger.warning(f"添加max_hp字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN max_mp INTEGER DEFAULT 50")
+    except Exception as e:
+        logger.warning(f"添加max_mp字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN speed INTEGER DEFAULT 10")
+    except Exception as e:
+        logger.warning(f"添加speed字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN critical_rate REAL DEFAULT 0.05")
+    except Exception as e:
+        logger.warning(f"添加critical_rate字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN critical_damage REAL DEFAULT 1.5")
+    except Exception as e:
+        logger.warning(f"添加critical_damage字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN hit_rate REAL DEFAULT 0.95")
+    except Exception as e:
+        logger.warning(f"添加hit_rate字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN dodge_rate REAL DEFAULT 0.05")
+    except Exception as e:
+        logger.warning(f"添加dodge_rate字段失败（可能已存在）: {e}")
+    
+    # 添加技能系统字段
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN learned_skills TEXT DEFAULT '[]'")
+    except Exception as e:
+        logger.warning(f"添加learned_skills字段失败（可能已存在）: {e}")
+    
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN equipped_skills TEXT DEFAULT '[]'")
+    except Exception as e:
+        logger.warning(f"添加equipped_skills字段失败（可能已存在）: {e}")
+    
+    await conn.commit()
+    logger.info("v21迁移完成：战斗属性和技能系统字段已添加")

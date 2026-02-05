@@ -15,7 +15,7 @@ class AlchemyHandlers:
         success, msg = await self.alchemy_mgr.get_available_recipes(user_id)
         yield event.plain_result(msg)
 
-    async def handle_craft(self, event: AstrMessageEvent, pill_id: int):
+    async def handle_craft(self, event: AstrMessageEvent, pill_id: str):
         """炼丹"""
         user_id = event.get_sender_id()
         
@@ -35,5 +35,13 @@ class AlchemyHandlers:
         if not pill_id:
             yield event.plain_result("❌ 请输入丹药配方ID")
             return
-        success, msg, _ = await self.alchemy_mgr.craft_pill(user_id, int(pill_id))
+        
+        # 尝试将pill_id转换为整数
+        try:
+            pill_id_int = int(pill_id)
+        except ValueError:
+            yield event.plain_result("❌ 请输入有效的丹药配方ID")
+            return
+        
+        success, msg, _ = await self.alchemy_mgr.craft_pill(user_id, pill_id_int)
         yield event.plain_result(msg)

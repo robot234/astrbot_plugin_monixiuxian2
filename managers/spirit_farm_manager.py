@@ -81,7 +81,7 @@ class SpiritFarmManager:
             "可种植：灵草、血灵草、冰心草..."
         )
     
-    async def plant_herb(self, player: Player, herb_name: str) -> Tuple[bool, str]:
+    async def plant_herb(self, player: Player, herb_name: str, count: int = 1) -> Tuple[bool, str]:
         """种植灵草"""
         if herb_name not in SPIRIT_HERBS:
             herbs_list = "、".join(SPIRIT_HERBS.keys())
@@ -95,19 +95,26 @@ class SpiritFarmManager:
         max_slots = level_config["slots"]
         crops = farm["crops"]
         
-        if len(crops) >= max_slots:
+        available_slots = max_slots - len(crops)
+        if available_slots <= 0:
             return False, f"❌ 灵田已满！最多种植 {max_slots} 株。"
         
-        # 种植
+        # 调整种植数量
+        plant_count = min(count, available_slots)
+        if plant_count <= 0:
+            return False, "❌ 种植数量必须大于0！"
+        
+        # 批量种植
         herb_config = SPIRIT_HERBS[herb_name]
         plant_time = int(time.time())
         mature_time = plant_time + herb_config["grow_time"]
         
-        crops.append({
-            "name": herb_name,
-            "plant_time": plant_time,
-            "mature_time": mature_time
-        })
+        for _ in range(plant_count):
+            crops.append({
+                "name": herb_name,
+                "plant_time": plant_time,
+                "mature_time": mature_time
+            })
         
         await self.db.conn.execute(
             "UPDATE spirit_farms SET crops = ? WHERE user_id = ?",

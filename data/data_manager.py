@@ -59,18 +59,20 @@ class DataBase:
         await self.conn.execute(
             """
             INSERT INTO players (
-                user_id, level_index, spiritual_root,cultivation_type, user_name, lifespan,
+                user_id, level_index, spiritual_root, cultivation_type, user_name, lifespan,
                 experience, gold, state, cultivation_start_time, last_check_in_date, level_up_rate,
                 weapon, armor, main_technique, techniques,
                 hp, mp, atk, atkpractice,
+                max_hp, max_mp, speed, critical_rate, critical_damage, hit_rate, dodge_rate,
                 spiritual_qi, max_spiritual_qi, blood_qi, max_blood_qi,
                 magic_damage, physical_damage, magic_defense, physical_defense, mental_power,
                 sect_id, sect_position, sect_contribution, sect_task, sect_elixir_get,
                 blessed_spot_flag, blessed_spot_name,
                 active_pill_effects, permanent_pill_gains, has_resurrection_pill, has_debuff_shield, pills_inventory,
                 storage_ring, storage_ring_items,
-                daily_pill_usage, last_daily_reset
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                daily_pill_usage, last_daily_reset,
+                learned_skills, equipped_skills
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 player.user_id,
@@ -93,6 +95,13 @@ class DataBase:
                 player.mp,
                 player.atk,
                 player.atkpractice,
+                player.max_hp,
+                player.max_mp,
+                player.speed,
+                player.critical_rate,
+                player.critical_damage,
+                player.hit_rate,
+                player.dodge_rate,
                 player.spiritual_qi,
                 player.max_spiritual_qi,
                 player.blood_qi,
@@ -117,7 +126,9 @@ class DataBase:
                 player.storage_ring,
                 player.storage_ring_items,
                 player.daily_pill_usage,
-                player.last_daily_reset
+                player.last_daily_reset,
+                player.learned_skills,
+                player.equipped_skills
             )
         )
         await self.conn.commit()
@@ -171,6 +182,13 @@ class DataBase:
                 mp = ?,
                 atk = ?,
                 atkpractice = ?,
+                max_hp = ?,
+                max_mp = ?,
+                speed = ?,
+                critical_rate = ?,
+                critical_damage = ?,
+                hit_rate = ?,
+                dodge_rate = ?,
                 spiritual_qi = ?,
                 max_spiritual_qi = ?,
                 blood_qi = ?,
@@ -195,7 +213,9 @@ class DataBase:
                 storage_ring = ?,
                 storage_ring_items = ?,
                 daily_pill_usage = ?,
-                last_daily_reset = ?
+                last_daily_reset = ?,
+                learned_skills = ?,
+                equipped_skills = ?
             WHERE user_id = ?
             """,
             (
@@ -218,6 +238,13 @@ class DataBase:
                 player.mp,
                 player.atk,
                 player.atkpractice,
+                player.max_hp,
+                player.max_mp,
+                player.speed,
+                player.critical_rate,
+                player.critical_damage,
+                player.hit_rate,
+                player.dodge_rate,
                 player.spiritual_qi,
                 player.max_spiritual_qi,
                 player.blood_qi,
@@ -243,6 +270,8 @@ class DataBase:
                 player.storage_ring_items,
                 player.daily_pill_usage,
                 player.last_daily_reset,
+                player.learned_skills,
+                player.equipped_skills,
                 player.user_id
             )
         )

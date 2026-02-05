@@ -6,6 +6,7 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig
 from ..data import DataBase
 from ..core import CultivationManager, PillManager
+from ..core.skill_manager import SkillManager
 from ..models import Player
 from ..models_extended import UserStatus
 from ..config_manager import ConfigManager
@@ -29,6 +30,7 @@ class PlayerHandler:
         self.config_manager = config_manager
         self.cultivation_manager = CultivationManager(config, config_manager)
         self.pill_manager = PillManager(self.db, self.config_manager)
+        self.skill_manager = SkillManager(self.db, self.config_manager)
 
     async def handle_start_xiuxian(self, event: AstrMessageEvent, cultivation_type: str = ""):
         """处理创建角色
@@ -128,11 +130,6 @@ class PlayerHandler:
         )
         total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
 
-        # 图片生成暂时禁用（缺少资源文件会导致效果很差）
-        # 直接使用优化后的文本格式显示
-
-        # 文本模式 (完整信息显示)
-        
         # 获取战力（综合攻防）
         combat_power = (
             int(total_attrs['physical_damage']) + int(total_attrs['magic_damage']) +
@@ -207,12 +204,80 @@ class PlayerHandler:
                 f"  物防：{total_attrs['physical_defense']}\n"
             )
         
+        # 添加战斗属性
+        reply_msg += (
+            f"\n"
+            f"【战斗属性】\n"
+            f"  HP：{player.hp}/{player.max_hp}\n"
+            f"  MP：{player.mp}/{player.max_mp}\n"
+            f"  速度：{player.speed}\n"
+            f"  暴击率：{player.critical_rate:.1%}\n"
+            f"  暴击伤害：{player.critical_damage:.1f}x\n"
+            f"  命中率：{player.hit_rate:.1%}\n"
+            f"  闪避率：{player.dodge_rate:.1%}\n"
+        )
+        
+        # 获取已装备技能
+        equipped_skill_configs = self.skill_manager.get_equipped_skill_configs(player)
+        if equipped_skill_configs:
+            skill_names = [s.get("name", "未知") for s in equipped_skill_configs]
+            reply_msg += (
+                f"\n"
+                f"【已装备技能】\n"
+                f"  {' | '.join(skill_names)}\n"
+            )
+        else:
+            reply_msg += (
+                f"\n"
+                f"【已装备技能】\n"
+                f"  (无)\n"
+            )
+        
         reply_msg += (
             f"\n"
             f"【装备信息】\n"
             f"  主修功法：{technique_name}\n"
             f"  法器：{weapon_name}\n"
             f"  防具：{armor_name}\n"
+        )
+        
+        # 显示功法被动效果
+        if player.main_technique:
+            technique_config = self.config_manager.get_technique_by_name(player.main_technique)
+            if technique_config:
+                passive_effects = technique_config.get("passive_effects", {})
+                growth_modifiers = technique_config.get("growth_modifiers", {})
+                
+                passive_lines = []
+                
+                # 被动效果
+                if passive_effects:
+                    for effect_key, effect_value in passive_effects.items():
+                        if effect_value != 0:
+                            effect_name = self._get_effect_name(effect_key)
+                            if isinstance(effect_value, float) and effect_value < 1:
+                                passive_lines.append(f"{effect_name}+{effect_value:.0%}")
+                            else:
+                                passive_lines.append(f"{effect_name}+{effect_value}")
+                
+                # 成长修正（只显示非1.0的）
+                growth_lines = []
+                for mod_key, mod_value in growth_modifiers.items():
+                    if mod_value != 1.0:
+                        mod_name = self._get_modifier_name(mod_key)
+                        if mod_value > 1.0:
+                            growth_lines.append(f"{mod_name}×{mod_value:.1f}")
+                        else:
+                            growth_lines.append(f"{mod_name}×{mod_value:.1f}")
+                
+                if passive_lines or growth_lines:
+                    reply_msg += f"\n【功法效果】\n"
+                    if passive_lines:
+                        reply_msg += f"  被动：{', '.join(passive_lines)}\n"
+                    if growth_lines:
+                        reply_msg += f"  成长：{', '.join(growth_lines)}\n"
+        
+        reply_msg += (
             f"\n"
             f"【宗门信息】\n"
             f"  所在宗门：{sect_name}\n"
@@ -254,6 +319,41 @@ class PlayerHandler:
         reply_msg += "━━━━━━━━━━━━━━━"
         
         yield event.plain_result(reply_msg)
+
+    def _get_effect_name(self, effect_key: str) -> str:
+        """获取效果名称"""
+        effect_names = {
+            "critical_rate": "暴击率",
+            "critical_damage": "暴击伤害",
+            "dodge_rate": "闪避率",
+            "hit_rate": "命中率",
+            "speed": "速度",
+            "physical_damage": "物伤",
+            "magic_damage": "法伤",
+            "physical_defense": "物防",
+            "magic_defense": "法防",
+            "hp_bonus": "HP",
+            "mp_bonus": "MP",
+            "lifesteal": "生命偷取",
+        }
+        return effect_names.get(effect_key, effect_key)
+    
+    def _get_modifier_name(self, mod_key: str) -> str:
+        """获取成长修正名称"""
+        modifier_names = {
+            "physical_attack": "物攻成长",
+            "magic_attack": "法攻成长",
+            "physical_defense": "物防成长",
+            "magic_defense": "法防成长",
+            "hp": "HP成长",
+            "mp": "MP成长",
+            "speed": "速度成长",
+            "lifespan": "寿命成长",
+            "mental_power": "精神力成长",
+            "blood_qi": "气血成长",
+            "spiritual_qi": "灵气成长",
+        }
+        return modifier_names.get(mod_key, mod_key)
 
     @player_required
     async def handle_start_cultivation(self, player: Player, event: AstrMessageEvent):

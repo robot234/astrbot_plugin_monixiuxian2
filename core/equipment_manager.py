@@ -88,6 +88,13 @@ class EquipmentManager:
             magic_defense=magic_defense,
             physical_defense=physical_defense,
             mental_power=mental_power,
+            # 新增战斗属性
+            speed=item_config.get("speed", 0),
+            critical_rate=item_config.get("critical_rate", 0.0),
+            critical_damage=item_config.get("critical_damage", 0.0),
+            hp_bonus=item_config.get("hp_bonus", 0),
+            mp_bonus=item_config.get("mp_bonus", 0),
+            # 现有属性继续
             exp_multiplier=item_config.get("exp_multiplier", 0.0),
             spiritual_qi=item_config.get("spiritual_qi", 0),
             blood_qi=item_config.get("blood_qi", 0)

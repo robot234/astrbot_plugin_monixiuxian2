@@ -239,12 +239,30 @@ class AdventureManager:
         event = self._trigger_route_event(route)
 
         rewards = self._calculate_rewards(player, route, effective_duration, event)
-        dropped_items, item_msg = await self._handle_drops(player, route, event)
+        
+        # 开始事务
+        await self.db.conn.execute("BEGIN IMMEDIATE")
+        try:
+            # 重新获取玩家对象，确保在事务中
+            player = await self.db.get_player_by_id(user_id)
+            if not player:
+                await self.db.conn.rollback()
+                return False, "❌ 你还未踏入修仙之路！", None
 
-        player.experience += rewards["exp"]
-        player.gold += rewards["gold"]
-        await self.db.update_player(player)
-        await self.db.ext.set_user_free(user_id)
+            # 处理物品掉落，传递 external_transaction=True
+            dropped_items, item_msg = await self._handle_drops(player, route, event, external_transaction=True)
+
+            # 修改玩家属性
+            player.experience += rewards["exp"]
+            player.gold += rewards["gold"]
+            
+            # 一次更新玩家对象
+            await self.db.update_player(player)
+            await self.db.ext.set_user_free(user_id)
+            await self.db.conn.commit()
+        except Exception:
+            await self.db.conn.rollback()
+            raise
 
         fatigue = route.get("fatigue_cooldown", 0)
         if event.get("injury"):
@@ -363,7 +381,7 @@ class AdventureManager:
         final_gold = max(0, int(gold_total * event.get("gold_mult", 1.0)))
         return {"exp": final_exp, "gold": final_gold}
 
-    async def _handle_drops(self, player: Player, route: dict, event: dict) -> Tuple[List[Tuple[str, int]], str]:
+    async def _handle_drops(self, player: Player, route: dict, event: dict, external_transaction: bool = False) -> Tuple[List[Tuple[str, int]], str]:
         dropped_items: List[Tuple[str, int]] = []
         if not self.storage_ring_manager:
             return dropped_items, ""
@@ -389,7 +407,7 @@ class AdventureManager:
 
         item_lines = []
         for item_name, qty in dropped_items:
-            success, _ = await self.storage_ring_manager.store_item(player, item_name, qty, silent=True)
+            success, _ = await self.storage_ring_manager.store_item(player, item_name, qty, silent=True, external_transaction=external_transaction)
             if success:
                 item_lines.append(f"  · {item_name} x{qty}")
             else:

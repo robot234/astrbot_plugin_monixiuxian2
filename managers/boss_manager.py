@@ -10,10 +10,13 @@ from typing import Tuple, Dict, Optional, List, TYPE_CHECKING
 from ..data.data_manager import DataBase
 from ..models_extended import Boss, UserStatus
 from ..models import Player
-from .combat_manager import CombatManager, CombatStats
 
 if TYPE_CHECKING:
     from ..core import StorageRingManager
+    from ..core.battle_manager import BattleManager
+    from ..core.equipment_manager import EquipmentManager
+    from ..core.skill_manager import SkillManager
+    from ..config_manager import ConfigManager
 
 
 class BossManager:
@@ -60,10 +63,21 @@ class BossManager:
         ],
     }
     
-    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager=None, storage_ring_manager: "StorageRingManager" = None):
+    def __init__(
+        self, 
+        db: DataBase, 
+        battle_mgr: "BattleManager", 
+        config_manager: "ConfigManager" = None, 
+        storage_ring_manager: "StorageRingManager" = None,
+        equipment_manager: "EquipmentManager" = None,
+        skill_manager: "SkillManager" = None
+    ):
         self.db = db
-        self.combat_mgr = combat_mgr
+        self.battle_mgr = battle_mgr
+        self.config_manager = config_manager
         self.storage_ring_manager = storage_ring_manager
+        self.equipment_manager = equipment_manager
+        self.skill_manager = skill_manager
         self.config = config_manager.boss_config if config_manager else {}
         self.levels = self.config.get("levels", self.BOSS_LEVELS)
     
@@ -145,6 +159,63 @@ ATK：{atk}
         
         return True, msg, boss
     
+    def _create_boss_combat_stats(self, boss: Boss):
+        """
+        为Boss创建战斗属性
+        
+        Args:
+            boss: Boss对象
+            
+        Returns:
+            CombatStats对象
+        """
+        from ..core.battle_manager import CombatStats
+        
+        # 根据Boss境界计算属性
+        level_index = 0
+        for level in self.levels:
+            if level["name"] == boss.boss_level:
+                level_index = level["level_index"]
+                break
+        
+        # Boss的物理/法术攻击基于ATK
+        physical_attack = boss.atk
+        magic_attack = int(boss.atk * 0.8)  # Boss法攻略低于物攻
+        
+        # Boss的防御基于defense百分比转换
+        physical_defense = int(boss.defense * 2)  # 防御值
+        magic_defense = int(boss.defense * 1.5)
+        
+        # Boss速度基于境界
+        speed = 10 + level_index * 2
+        
+        # Boss暴击率和暴击伤害
+        critical_rate = 0.1 + level_index * 0.01  # 10%-30%
+        critical_damage = 1.5 + level_index * 0.02  # 1.5x-2.0x
+        
+        return CombatStats(
+            user_id=f"boss_{boss.boss_id}",
+            name=boss.boss_name,
+            hp=boss.hp,
+            max_hp=boss.max_hp,
+            mp=boss.max_hp // 2,  # Boss MP为HP的一半
+            max_mp=boss.max_hp // 2,
+            physical_attack=physical_attack,
+            magic_attack=magic_attack,
+            physical_defense=physical_defense,
+            magic_defense=magic_defense,
+            speed=speed,
+            critical_rate=min(0.5, critical_rate),
+            critical_damage=critical_damage,
+            hit_rate=0.95,
+            dodge_rate=0.05 + level_index * 0.005,  # 5%-15%
+            skills=[],  # Boss暂不使用技能
+            skill_cooldowns={},
+            shield=0,
+            buffs=[],
+            debuffs=[]
+        )
+    
     async def challenge_boss(
         self,
         user_id: str
@@ -177,65 +248,59 @@ ATK：{atk}
         if user_cd.type != UserStatus.IDLE:
             return False, "❌ 你当前正忙，无法挑战Boss！", None
         
-        # 4. 计算玩家战斗属性
-        # 获取buff加成
-        impart_info = await self.db.ext.get_impart_info(user_id)
-        hp_buff = impart_info.impart_hp_per if impart_info else 0.0
-        mp_buff = impart_info.impart_mp_per if impart_info else 0.0
-        atk_buff = impart_info.impart_atk_per if impart_info else 0.0
-        crit_rate_buff = impart_info.impart_know_per if impart_info else 0.0
+        # 4. 检查玩家血量，如果血量过低，需要冷却时间
+        if player.hp <= 1:
+            import json
+            cooldown_time = 10 * 60  # 10分钟冷却
+            
+            try:
+                extra_data = json.loads(user_cd.extra_data) if user_cd.extra_data else {}
+                last_defeat_time = extra_data.get('last_boss_defeat_time', 0)
+                
+                if last_defeat_time:
+                    if int(time.time()) - last_defeat_time < cooldown_time:
+                        remaining_time = cooldown_time - (int(time.time()) - last_defeat_time)
+                        minutes = remaining_time // 60
+                        seconds = remaining_time % 60
+                        return False, f"❌ 你当前血量过低，需要休息一段时间才能再次挑战Boss！\n\n💡 剩余冷却时间：{minutes}分{seconds}秒", None
+            except Exception:
+                pass
         
-        # 计算HP/MP/ATK
-        if player.hp == 0 or player.mp == 0:
-            # 如果没有初始化战斗属性，先计算
-            hp, mp = self.combat_mgr.calculate_hp_mp(player.experience, hp_buff, mp_buff)
-            atk = self.combat_mgr.calculate_atk(player.experience, player.atkpractice, atk_buff)
-            player.hp = hp
-            player.mp = mp
-            player.atk = atk
-            await self.db.update_player(player)
-        else:
-            # 使用现有属性
-            hp = player.hp
-            mp = player.mp
-            atk = player.atk
-        
-        # 创建玩家战斗属性
-        player_stats = CombatStats(
-            user_id=user_id,
-            name=player.user_name if player.user_name else f"道友{user_id[:6]}",
-            hp=hp,
-            max_hp=int(player.experience * (1 + hp_buff) // 2),
-            mp=mp,
-            max_mp=int(player.experience * (1 + mp_buff)),
-            atk=atk,
-            defense=0,  # 可以根据装备添加
-            crit_rate=int(crit_rate_buff * 100),  # 转换为百分比
-            exp=player.experience
+        # 5. 使用新的 BattleManager 准备玩家战斗属性
+        player_stats = self.battle_mgr.prepare_combat_stats(
+            player=player,
+            equipment_manager=self.equipment_manager,
+            skill_manager=self.skill_manager
         )
         
-        # 创建Boss战斗属性
-        boss_stats = CombatStats(
-            user_id=str(boss.boss_id),
-            name=boss.boss_name,
-            hp=boss.hp,
-            max_hp=boss.max_hp,
-            mp=boss.max_hp,  # Boss的MP等于HP
-            max_mp=boss.max_hp,
-            atk=boss.atk,
-            defense=boss.defense,
-            crit_rate=30,  # Boss固定30%会心率
-            exp=boss.stone_reward  # 奖励存在exp字段
+        # 挑战Boss前恢复HP/MP到满
+        player_stats.hp = player_stats.max_hp
+        player_stats.mp = player_stats.max_mp
+        
+        # 6. 创建Boss战斗属性
+        boss_stats = self._create_boss_combat_stats(boss)
+        
+        # 7. 执行战斗（使用新的战斗系统）
+        battle_result = self.battle_mgr.execute_battle(
+            player_stats, 
+            boss_stats, 
+            battle_type="duel"  # Boss战斗使用决斗模式
         )
         
-        # 5. 开始战斗
-        battle_result = self.combat_mgr.player_vs_boss(player_stats, boss_stats)
-        
-        # 6. 处理战斗结果
+        # 8. 处理战斗结果
         winner = battle_result["winner"]
-        reward = battle_result["reward"]
+        is_player_win = (winner == user_id)
         
-        if winner == user_id:
+        # 计算奖励
+        if is_player_win:
+            reward = boss.stone_reward
+        else:
+            # 失败给予部分奖励（基于造成的伤害比例）
+            damage_dealt = boss.max_hp - battle_result["p2_final"]["hp"]
+            damage_ratio = damage_dealt / boss.max_hp if boss.max_hp > 0 else 0
+            reward = int(boss.stone_reward * damage_ratio * 0.3)  # 最多30%奖励
+        
+        if is_player_win:
             # 玩家胜利
             boss.status = 0  # 标记Boss为已击败
             await self.db.ext.defeat_boss(boss.boss_id)
@@ -259,6 +324,12 @@ ATK：{atk}
                     if item_lines:
                         item_msg = "\n\n📦 获得物品：\n" + "\n".join(item_lines)
             
+            # 更新玩家HP（按战斗结果比例）
+            final_hp_ratio = battle_result["p1_final"]["hp"] / battle_result["p1_final"]["max_hp"]
+            player.hp = max(1, int(player.max_hp * final_hp_ratio))
+            player.mp = player.max_mp  # MP恢复满
+            await self.db.update_player(player)
+            
             result_msg = f"""
 🎉 挑战成功！
 ━━━━━━━━━━━━━━━
@@ -269,12 +340,33 @@ ATK：{atk}
 获得灵石：{reward}{item_msg}
 
 {player_stats.name}
-HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
+HP：{battle_result['p1_final']['hp']}/{player_stats.max_hp}
             """.strip()
+            
+            # 添加战斗结果信息供广播使用
+            battle_result["reward"] = reward
+            
         else:
             # 玩家失败
-            boss.hp = battle_result["boss_final_hp"]
+            boss.hp = battle_result["p2_final"]["hp"]
             await self.db.ext.update_boss(boss)
+            
+            # 更新玩家HP为1（濒死状态）
+            player.hp = 1
+            player.mp = player.max_mp
+            if reward > 0:
+                player.gold += reward
+            await self.db.update_player(player)
+            
+            # 记录失败时间
+            import json
+            try:
+                extra_data = json.loads(user_cd.extra_data) if user_cd.extra_data else {}
+                extra_data['last_boss_defeat_time'] = int(time.time())
+                user_cd.extra_data = json.dumps(extra_data)
+                await self.db.ext.update_user_cd(user_cd)
+            except Exception:
+                pass
             
             result_msg = f"""
 💀 挑战失败
@@ -287,19 +379,10 @@ HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
 
 {boss.boss_name} 剩余HP：{boss.hp}/{boss.max_hp}
             """.strip()
-            
-            # 即使失败也给予部分奖励
-            if reward > 0:
-                player.gold += reward
         
-        # 更新玩家HP/MP
-        player.hp = battle_result["player_final_hp"]
-        player.mp = battle_result["player_final_mp"]
-        await self.db.update_player(player)
-        
-        # 返回完整战斗日志
-        combat_log = "\n".join(battle_result["combat_log"])
-        full_msg = combat_log + "\n\n" + result_msg
+        # 生成战斗摘要
+        battle_summary = self.battle_mgr.generate_battle_summary(battle_result, include_full_log=False)
+        full_msg = battle_summary + "\n\n" + result_msg
         
         return True, full_msg, battle_result
     
@@ -312,7 +395,11 @@ HP：{battle_result['player_final_hp']}/{player_stats.max_hp}
         """
         boss = await self.db.ext.get_active_boss()
         if not boss:
-            return False, "❌ 当前没有Boss！", None
+            # 计算下一个Boss复活时间（默认2小时后）
+            next_spawn_time = int(time.time()) + 2 * 3600
+            # 格式化时间
+            next_time_str = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(next_spawn_time))
+            return False, f"❌ 当前没有Boss！\n\n💡 预计下一个Boss将在 {next_time_str} 复活", None
         
         hp_percent = (boss.hp / boss.max_hp) * 100
         

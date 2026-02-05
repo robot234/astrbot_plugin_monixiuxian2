@@ -190,11 +190,13 @@ class SectManager:
         sect_name = sect.sect_name if sect else "未知宗门"
         
         # 清除宗门信息
-        await self.db.ext.update_player_sect_info(user_id, 0, 4)
+        await self.db.ext.update_player_sect_info(user_id, 0, 0)
+        player.sect_id = 0
+        player.sect_position = 0
         player.sect_contribution = 0
         await self.db.update_player(player)
         
-        return True, f"✨ 你已退出宗门『{sect_name}』！"
+        return True, f"✨ 你已退出宗门『{sect_name}』！贡献度已清零。"
     
     async def donate_to_sect(
         self,
@@ -483,38 +485,65 @@ class SectManager:
         if not player or player.sect_id == 0:
             return False, "❌ 你还未加入宗门！"
             
-        # 检查CD (使用宗门任务CD类型，假设为4)
+        # 检查CD
         user_cd = await self.db.ext.get_user_cd(user_id)
         if not user_cd:
             await self.db.ext.create_user_cd(user_id)
             user_cd = await self.db.ext.get_user_cd(user_id)
             
         current_time = int(time.time())
-        # 假设 CD 记录在 type=4, scheduled_time 为下次可用时间
-        # 这里重用 set_user_busy 逻辑，但任务通常是瞬时的，只设冷却
-        if user_cd.type == UserStatus.SECT_TASK and current_time < user_cd.scheduled_time:
+        # 检查冷却时间
+        if user_cd.type == UserStatus.SECT_TASK and user_cd.scheduled_time and current_time < user_cd.scheduled_time:
             remaining = user_cd.scheduled_time - current_time
             return False, f"❌ 宗门任务冷却中！还需 {remaining//60} 分钟。"
+        # 如果冷却时间已过或scheduled_time无效，重置用户状态为空闲
+        elif user_cd.type == UserStatus.SECT_TASK:
+            await self.db.ext.set_user_free(user_id)
 
-        # 执行任务
-        contribution_gain = random.randint(10, 30)
-        stone_gain = contribution_gain * 10
+        # 设置1小时冷却，开始任务
+        await self.db.ext.set_user_busy(user_id, UserStatus.SECT_TASK, current_time + 3600)
         
-        player.sect_contribution += contribution_gain
-        await self.db.update_player(player)
-        
-        # 宗门增加资源
-        await self.db.ext.donate_to_sect(player.sect_id, 0) # 只更新建设度? donate_to_sect update both.
-        # 手动更新宗门资源
-        sect = await self.db.ext.get_sect_by_id(player.sect_id)
-        if sect:
-            sect.sect_materials += stone_gain
-            await self.db.ext.update_sect(sect)
+        return True, "✨ 你开始执行宗门任务！任务需要1小时完成，请在完成后使用 /完成宗门任务 领取奖励。"
 
-        # 设置1小时冷却
-        await self.db.ext.set_user_busy(user_id, 4, current_time + 3600)
-        
-        return True, f"✨ 完成宗门任务！\n获得贡献：{contribution_gain}\n宗门资材：+{stone_gain}"
+    async def finish_sect_task(self, user_id: str) -> Tuple[bool, str]:
+        """完成宗门任务（解决卡住的情况）"""
+        player = await self.db.get_player_by_id(user_id)
+        if not player or player.sect_id == 0:
+            return False, "❌ 你还未加入宗门！"
+
+        user_cd = await self.db.ext.get_user_cd(user_id)
+        if not user_cd:
+            return False, "❌ 你当前不在宗门任务中！"
+
+        # 检查是否在宗门任务状态
+        if user_cd.type == UserStatus.SECT_TASK:
+            now = int(time.time())
+            # 检查scheduled_time是否有效且任务未完成
+            if user_cd.scheduled_time and now < user_cd.scheduled_time:
+                remaining = user_cd.scheduled_time - now
+                minutes = remaining // 60
+                seconds = remaining % 60
+                return False, f"❌ 宗门任务尚未完成！还需 {minutes}分{seconds}秒。"
+            # 任务已完成，计算并发放奖励
+            contribution_gain = random.randint(10, 30)
+            stone_gain = contribution_gain * 10
+            
+            player.sect_contribution += contribution_gain
+            await self.db.update_player(player)
+            
+            # 宗门增加资源
+            sect = await self.db.ext.get_sect_by_id(player.sect_id)
+            if sect:
+                sect.sect_materials += stone_gain
+                await self.db.ext.update_sect(sect)
+            
+            # 重置状态
+            await self.db.ext.set_user_free(user_id)
+            return True, f"✨ 宗门任务完成！\n获得贡献：{contribution_gain}\n宗门资材：+{stone_gain}"
+        else:
+            # 状态异常，重置状态
+            await self.db.ext.set_user_free(user_id)
+            return True, "✅ 状态异常已修复！你的状态已恢复正常。"
 
     async def handle_owner_death(self, sect_id: int, dead_owner_id: str) -> Tuple[bool, str]:
         """处理宗主死亡，自动传位或解散宗门"""

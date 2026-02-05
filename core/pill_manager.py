@@ -30,6 +30,9 @@ class PillManager:
             "max_spiritual_qi",
             "blood_qi",
             "max_blood_qi",
+            "max_hp",
+            "max_mp",
+            "speed",
         ]
         for attr in attrs:
             value = getattr(player, attr, 0)
@@ -41,6 +44,10 @@ class PillManager:
             player.spiritual_qi = player.max_spiritual_qi
         if player.blood_qi > player.max_blood_qi:
             player.blood_qi = player.max_blood_qi
+        if player.hp > player.max_hp:
+            player.hp = player.max_hp
+        if player.mp > player.max_mp:
+            player.mp = player.max_mp
 
     def get_pill_by_name(self, pill_name: str) -> Optional[dict]:
         """根据名称获取丹药配置
@@ -65,6 +72,11 @@ class PillManager:
         pill = self.config_manager.utility_pills_data.get(pill_name)
         if pill:
             return pill
+
+        # 尝试从items.json中查找
+        for item in self.config_manager.items_data.values():
+            if item.get("name") == pill_name and item.get("type") == "丹药":
+                return item
 
         return None
 
@@ -133,6 +145,10 @@ class PillManager:
         # 根据丹药类型处理
         effect_type = pill_data.get("effect_type", "instant")
         subtype = pill_data.get("subtype", "")
+
+        # 禁止服用破境丹
+        if subtype == "breakthrough":
+            return False, f"【{pill_name}】是破境丹，只能在突破时使用！"
 
         if subtype == "exp":
             # 修为丹
@@ -220,6 +236,7 @@ class PillManager:
         effect_keys = [
             "cultivation_multiplier", "physical_damage_multiplier", "magic_damage_multiplier",
             "physical_defense_multiplier", "magic_defense_multiplier",
+            "hp_multiplier", "mp_multiplier", "speed_multiplier",
             "lifespan_cost_per_minute", "lifespan_regen_per_minute",
             "spiritual_qi_regen_per_minute", "blood_qi_regen_per_minute", "blood_qi_cost_per_minute",
             "breakthrough_bonus"
@@ -279,6 +296,27 @@ class PillManager:
             else:
                 effect_desc.append(f"法防{mult:.0%}")
 
+        if "hp_multiplier" in pill_data:
+            mult = pill_data["hp_multiplier"]
+            if mult > 0:
+                effect_desc.append(f"最大HP+{mult:.0%}")
+            else:
+                effect_desc.append(f"最大HP{mult:.0%}")
+
+        if "mp_multiplier" in pill_data:
+            mult = pill_data["mp_multiplier"]
+            if mult > 0:
+                effect_desc.append(f"最大MP+{mult:.0%}")
+            else:
+                effect_desc.append(f"最大MP{mult:.0%}")
+
+        if "speed_multiplier" in pill_data:
+            mult = pill_data["speed_multiplier"]
+            if mult > 0:
+                effect_desc.append(f"速度+{mult:.0%}")
+            else:
+                effect_desc.append(f"速度{mult:.0%}")
+
         if "lifespan_cost_per_minute" in pill_data:
             cost = pill_data["lifespan_cost_per_minute"]
             effect_desc.append(f"每分钟扣除寿命-{cost}")
@@ -317,8 +355,12 @@ class PillManager:
         )
 
     async def _use_permanent_pill(self, player: Player, pill_name: str, pill_data: dict) -> Tuple[bool, str]:
-        """使用永久属性丹药"""
-        # 检查境界限制（30%上限）
+        """使用永久属性丹药
+        
+        注意：永久丹药只对基础属性生效，不影响装备和功法加成
+        每个境界的永久属性丹药增益最多为基础属性的50%
+        """
+        # 检查境界限制（50%上限）
         permanent_gains = player.get_permanent_pill_gains()
         level_key = f"level_{player.level_index}"
 
@@ -332,9 +374,12 @@ class PillManager:
                 "lifespan": 0,
                 "max_spiritual_qi": 0,
                 "max_blood_qi": 0,
+                "max_hp": 0,
+                "max_mp": 0,
+                "speed": 0,
             }
 
-        # 计算基础属性（当前境界突破时获得的属性）
+        # 计算基础属性（当前境界突破时获得的属性，不包含装备和功法加成）
         base_attrs = self._get_base_attributes_for_level(player, player.level_index)
 
         # 检查各项属性是否已达上限
@@ -347,6 +392,9 @@ class PillManager:
             "lifespan_gain": ("lifespan", "寿命"),
             "max_spiritual_qi_gain": ("max_spiritual_qi", "最大灵气"),
             "max_blood_qi_gain": ("max_blood_qi", "最大气血"),
+            "max_hp_gain": ("max_hp", "最大HP"),
+            "max_mp_gain": ("max_mp", "最大MP"),
+            "speed_gain": ("speed", "速度"),
         }
 
         gains_applied = {}
@@ -360,11 +408,11 @@ class PillManager:
             if gain == 0:
                 continue
 
-            # 只有正向增益才受30%限制
+            # 只有正向增益才受50%限制
             if gain > 0:
                 current_gain = permanent_gains[level_key].get(attr_key, 0)
                 base_value = base_attrs.get(attr_key, 100)  # 默认基础值100
-                limit = base_value * 0.3  # 30%上限
+                limit = base_value * 0.5  # 50%上限
 
                 if current_gain >= limit:
                     gains_blocked[attr_name] = f"已达上限({limit:.0f})"
@@ -437,7 +485,7 @@ class PillManager:
                 msg_parts.append(f"  {attr_name} {reason}")
 
         msg_parts.append("━━━━━━━━━━━━━━━")
-        msg_parts.append("注：每个境界的永久属性丹药\n增益最多为基础属性的30%")
+        msg_parts.append("注：每个境界的永久属性丹药\n增益最多为基础属性的50%")
 
         return True, "\n".join(msg_parts)
 
@@ -486,6 +534,34 @@ class PillManager:
                 msg_parts.append(f"🌟 恢复灵气：+{actual_restore}")
                 msg_parts.append(f"💫 当前灵气：{player.spiritual_qi}/{player.max_spiritual_qi}")
 
+        # HP恢复
+        if "hp_restore" in pill_data:
+            hp_restore = pill_data["hp_restore"]
+            if hp_restore == -1:
+                actual_restore = player.max_hp - player.hp
+                player.hp = player.max_hp
+            else:
+                old_hp = player.hp
+                player.hp = min(player.hp + hp_restore, player.max_hp)
+                actual_restore = player.hp - old_hp
+            if actual_restore > 0:
+                msg_parts.append(f"❤️ 恢复HP：+{actual_restore}")
+                msg_parts.append(f"💖 当前HP：{player.hp}/{player.max_hp}")
+
+        # MP恢复
+        if "mp_restore" in pill_data:
+            mp_restore = pill_data["mp_restore"]
+            if mp_restore == -1:
+                actual_restore = player.max_mp - player.mp
+                player.mp = player.max_mp
+            else:
+                old_mp = player.mp
+                player.mp = min(player.mp + mp_restore, player.max_mp)
+                actual_restore = player.mp - old_mp
+            if actual_restore > 0:
+                msg_parts.append(f"💙 恢复MP：+{actual_restore}")
+                msg_parts.append(f"🔮 当前MP：{player.mp}/{player.max_mp}")
+
         # 重置永久丹药增益
         if pill_data.get("resets_permanent_pills"):
             reset_applied = self._reset_permanent_pill_effects(player)
@@ -520,7 +596,9 @@ class PillManager:
         return True, "\n".join(msg_parts)
 
     def _get_base_attributes_for_level(self, player: Player, level_index: int) -> dict:
-        """获取当前境界的基础属性（用于计算30%上限）
+        """获取当前境界的基础属性（用于计算50%上限）
+        
+        注意：这里只返回境界本身提供的基础属性，不包含装备和功法加成
 
         Args:
             player: 玩家对象，用于确定修炼类型
@@ -541,6 +619,11 @@ class PillManager:
         else:
             level_config = {}
 
+        # 获取境界基础属性
+        base_hp = level_config.get("base_hp", 100)
+        base_mp = level_config.get("base_mp", 50)
+        base_speed = level_config.get("base_speed", 10)
+
         return {
             "physical_damage": level_config.get("breakthrough_physical_damage_gain", 10),
             "magic_damage": level_config.get("breakthrough_magic_damage_gain", 10),
@@ -550,6 +633,9 @@ class PillManager:
             "lifespan": level_config.get("breakthrough_lifespan_gain", 100),
             "max_spiritual_qi": level_config.get("breakthrough_spiritual_qi_gain", 100),
             "max_blood_qi": level_config.get("breakthrough_blood_qi_gain", 100),
+            "max_hp": level_config.get("breakthrough_hp_gain", base_hp),
+            "max_mp": level_config.get("breakthrough_mp_gain", base_mp),
+            "speed": level_config.get("breakthrough_speed_gain", base_speed),
         }
 
     async def handle_resurrection(self, player: Player) -> bool:
@@ -581,6 +667,11 @@ class PillManager:
         player.spiritual_qi = player.max_spiritual_qi // 2
         player.max_blood_qi = player.max_blood_qi // 2
         player.blood_qi = player.max_blood_qi // 2
+        player.max_hp = player.max_hp // 2
+        player.hp = player.max_hp // 2
+        player.max_mp = player.max_mp // 2
+        player.mp = player.max_mp // 2
+        player.speed = max(1, player.speed // 2)
 
         self._ensure_non_negative_attributes(player)
 
@@ -604,6 +695,9 @@ class PillManager:
             "physical_defense": 1.0,
             "magic_defense": 1.0,
             "cultivation_speed": 1.0,
+            "max_hp": 1.0,
+            "max_mp": 1.0,
+            "speed": 1.0,
         }
 
         # 累加临时效果
@@ -621,6 +715,12 @@ class PillManager:
                 multipliers["magic_defense"] += effect["magic_defense_multiplier"]
             if "cultivation_multiplier" in effect:
                 multipliers["cultivation_speed"] += effect["cultivation_multiplier"]
+            if "hp_multiplier" in effect:
+                multipliers["max_hp"] += effect["hp_multiplier"]
+            if "mp_multiplier" in effect:
+                multipliers["max_mp"] += effect["mp_multiplier"]
+            if "speed_multiplier" in effect:
+                multipliers["speed"] += effect["speed_multiplier"]
 
         # 累加永久效果
         permanent_gains = player.get_permanent_pill_gains()
@@ -643,6 +743,8 @@ class PillManager:
         temp_bonus = 0.0
         has_temp_effects = False
 
+        # 按丹药类型分组计算加成，同类型只取最高值
+        bonus_groups = {}
         for effect in effects:
             expiry_time = effect.get("expiry_time", 0)
             if expiry_time > 0 and current_time >= expiry_time:
@@ -650,8 +752,29 @@ class PillManager:
 
             subtype = effect.get("subtype", "")
             if subtype in {"breakthrough_boost", "breakthrough_debuff"}:
-                temp_bonus += effect.get("breakthrough_bonus", 0)
-                has_temp_effects = True
+                pill_name = effect.get("pill_name", "")
+                # 根据丹药名称判断类型
+                if "凝神增益丹" in pill_name:
+                    group = "zengyi"
+                elif "破境增益丹" in pill_name:
+                    group = "zengyi"
+                elif "渡劫增益丹" in pill_name:
+                    group = "zengyi"
+                elif "化神增益丹" in pill_name:
+                    group = "zengyi"
+                else:
+                    group = "other"
+                
+                # 同类型只保留最高加成
+                current_bonus = effect.get("breakthrough_bonus", 0)
+                if group not in bonus_groups or current_bonus > bonus_groups[group]:
+                    bonus_groups[group] = current_bonus
+
+        # 累加不同类型的加成
+        temp_bonus = sum(bonus_groups.values())
+        has_temp_effects = len(bonus_groups) > 0
+        # 限制总加成不超过50%
+        temp_bonus = min(temp_bonus, 0.5)
 
         permanent_multiplier = 1.0
         permanent_gains = player.get_permanent_pill_gains()
@@ -779,6 +902,9 @@ class PillManager:
             "lifespan",
             "max_spiritual_qi",
             "max_blood_qi",
+            "max_hp",
+            "max_mp",
+            "speed",
         ]
 
         changed = False

@@ -23,6 +23,15 @@ class BossHandlers:
             
         Returns:
             (成功标志, 消息, 战斗结果字典)
+            战斗结果字典包含:
+            - winner: 胜利者ID
+            - loser: 失败者ID
+            - is_draw: 是否平局
+            - log: 战斗日志
+            - rounds: 回合数
+            - p1_final: 玩家最终状态
+            - p2_final: Boss最终状态
+            - reward: 获得的灵石奖励（仅胜利时）
         """
         success, msg, battle_result = await self.boss_mgr.challenge_boss(user_id)
         return success, msg, battle_result
