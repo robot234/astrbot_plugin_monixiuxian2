@@ -518,8 +518,8 @@ class PillManager:
         if energy_restore is not None:
             if energy_restore == -1:
                 # 恢复至满
+                actual_restore = max_energy - current_energy
                 current_energy = max_energy
-                actual_restore = max_energy
             else:
                 old_energy = current_energy
                 current_energy = min(current_energy + energy_restore, max_energy)
@@ -538,11 +538,19 @@ class PillManager:
         if "hp_restore" in pill_data:
             hp_restore = pill_data["hp_restore"]
             if hp_restore == -1:
+                # 恢复至满
                 actual_restore = player.max_hp - player.hp
                 player.hp = player.max_hp
-            else:
+            elif 0 < hp_restore < 1:
+                # 百分比恢复
+                restore_amount = int(player.max_hp * hp_restore)
                 old_hp = player.hp
-                player.hp = min(player.hp + hp_restore, player.max_hp)
+                player.hp = min(player.hp + restore_amount, player.max_hp)
+                actual_restore = player.hp - old_hp
+            else:
+                # 固定值恢复
+                old_hp = player.hp
+                player.hp = min(player.hp + int(hp_restore), player.max_hp)
                 actual_restore = player.hp - old_hp
             if actual_restore > 0:
                 msg_parts.append(f"❤️ 恢复HP：+{actual_restore}")
@@ -552,11 +560,19 @@ class PillManager:
         if "mp_restore" in pill_data:
             mp_restore = pill_data["mp_restore"]
             if mp_restore == -1:
+                # 恢复至满
                 actual_restore = player.max_mp - player.mp
                 player.mp = player.max_mp
-            else:
+            elif 0 < mp_restore < 1:
+                # 百分比恢复
+                restore_amount = int(player.max_mp * mp_restore)
                 old_mp = player.mp
-                player.mp = min(player.mp + mp_restore, player.max_mp)
+                player.mp = min(player.mp + restore_amount, player.max_mp)
+                actual_restore = player.mp - old_mp
+            else:
+                # 固定值恢复
+                old_mp = player.mp
+                player.mp = min(player.mp + int(mp_restore), player.max_mp)
                 actual_restore = player.mp - old_mp
             if actual_restore > 0:
                 msg_parts.append(f"💙 恢复MP：+{actual_restore}")

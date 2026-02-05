@@ -71,7 +71,7 @@ class ShopHandler:
             await self.db.update_shop_data(pavilion_id, int(time.time()), new_items)
 
     def _generate_treasure_pavilion_items(self) -> list:
-        """生成百宝阁物品列表（技能书+功法+材料，不含丹药和武器防具）"""
+        """生成百宝阁物品列表（技能书+功法+材料，不含丹药、武器防具和储物戒）"""
         import random
         
         items = []
@@ -193,54 +193,6 @@ class ShopHandler:
                     'description': mat.get('description', ''),
                 })
         
-        # 4. 添加其他特殊物品（储物戒等）
-        special_count = self.config.get("TREASURE_PAVILION_SPECIAL_COUNT", 3)
-        special_items = []
-        
-        # 从储物戒配置中获取
-        for name, ring in self.config_manager.storage_rings_data.items():
-            if isinstance(ring, dict):
-                special_items.append({
-                    'name': ring.get('name', name),
-                    'type': 'storage_ring',
-                    'rank': ring.get('rank', '凡品'),
-                    'price': ring.get('price', 1000),
-                    'capacity': ring.get('capacity', 10),
-                    'description': ring.get('description', ''),
-                    'shop_weight': ring.get('shop_weight', 50),
-                })
-        
-        if special_items:
-            weights = [s.get("shop_weight", 50) for s in special_items]
-            selected_special = []
-            
-            for _ in range(min(special_count, len(special_items))):
-                if not special_items:
-                    break
-                total_weight = sum(weights)
-                if total_weight <= 0:
-                    break
-                r = random.uniform(0, total_weight)
-                cumulative = 0
-                for i, (sp, weight) in enumerate(zip(special_items, weights)):
-                    cumulative += weight
-                    if r <= cumulative:
-                        selected_special.append(sp)
-                        special_items.pop(i)
-                        weights.pop(i)
-                        break
-            
-            for sp in selected_special:
-                items.append({
-                    'name': sp.get('name', '未知物品'),
-                    'type': sp.get('type', 'special'),
-                    'rank': sp.get('rank', '凡品'),
-                    'price': sp.get('price', 1000),
-                    'stock': 1,
-                    'description': sp.get('description', ''),
-                    'capacity': sp.get('capacity', 0),
-                })
-        
         # 随机打乱顺序
         random.shuffle(items)
         
@@ -308,7 +260,7 @@ class ShopHandler:
         lines = [
             "🏛️ 【百宝阁】",
             "━━━━━━━━━━━━━━━",
-            "📚 技能秘籍 | 📜 功法心法 | 💎 珍稀物品",
+            "📚 技能秘籍 | 📜 功法心法 | 🧪 炼丹材料",
             ""
         ]
         
@@ -316,7 +268,6 @@ class ShopHandler:
         skill_books = [i for i in items if i.get('type') == 'skill_book']
         techniques = [i for i in items if i.get('type') in ['main_technique', 'technique']]
         materials = [i for i in items if i.get('type') == 'material']
-        others = [i for i in items if i.get('type') not in ['skill_book', 'main_technique', 'technique', 'material']]
         
         if skill_books:
             lines.append("📚 【技能秘籍】")
@@ -343,17 +294,6 @@ class ShopHandler:
             for item in materials:
                 stock_str = f"×{item.get('stock', 1)}" if item.get('stock', 1) > 0 else "售罄"
                 lines.append(f"  [{item.get('rank', '普通')}] {item['name']}")
-                lines.append(f"      💰{item.get('price', 0):,} | {stock_str}")
-            lines.append("")
-        
-        if others:
-            lines.append("💎 【珍稀物品】")
-            for item in others:
-                stock_str = f"×{item.get('stock', 1)}" if item.get('stock', 1) > 0 else "售罄"
-                extra_info = ""
-                if item.get('type') == 'storage_ring' and item.get('capacity'):
-                    extra_info = f" 容量:{item.get('capacity')}"
-                lines.append(f"  [{item.get('rank', '凡品')}] {item['name']}{extra_info}")
                 lines.append(f"      💰{item.get('price', 0):,} | {stock_str}")
             lines.append("")
         
@@ -517,15 +457,6 @@ class ShopHandler:
                 else:
                     result_lines.append(f"成功购买材料【{target_item['name']}】x{quantity}。")
                     result_lines.append(f"⚠️ 存入储物戒失败：{msg}")
-            elif item_type == 'storage_ring':
-                # 储物戒购买逻辑
-                success, msg = await self._handle_storage_ring_purchase(player, target_item)
-                if success:
-                    result_lines.append(msg)
-                else:
-                    await self.db.conn.rollback()
-                    yield event.plain_result(msg)
-                    return
             elif item_type == '功法':
                 success, msg = await self.storage_ring_manager.store_item(player, target_item['name'], quantity, external_transaction=True)
                 if success:
@@ -549,38 +480,6 @@ class ShopHandler:
             await self.db.conn.rollback()
             logger.error(f"购买异常: {e}")
             raise
-
-    async def _handle_storage_ring_purchase(self, player: Player, item: dict) -> tuple:
-        """处理储物戒购买
-        
-        Args:
-            player: 玩家对象
-            item: 储物戒物品配置
-            
-        Returns:
-            (是否成功, 消息)
-        """
-        ring_name = item.get('name', '')
-        capacity = item.get('capacity', 10)
-        
-        # 检查是否已有储物戒
-        current_ring = player.storage_ring
-        if current_ring:
-            # 获取当前储物戒容量
-            current_ring_data = self.config_manager.storage_rings_data.get(current_ring, {})
-            current_capacity = current_ring_data.get('capacity', 10)
-            
-            if capacity <= current_capacity:
-                return False, f"你当前的储物戒【{current_ring}】容量为{current_capacity}，新储物戒容量{capacity}不比它大，无需更换。"
-        
-        # 更换储物戒
-        player.storage_ring = ring_name
-        await self.db.update_player(player)
-        
-        if current_ring:
-            return True, f"✨ 成功购买并更换储物戒【{ring_name}】！\n容量：{capacity}格\n（原储物戒【{current_ring}】已替换）"
-        else:
-            return True, f"✨ 成功购买储物戒【{ring_name}】！\n容量：{capacity}格"
 
     def _get_acquire_hint(self, item_type: str) -> str:
         """根据类型返回获取提示"""

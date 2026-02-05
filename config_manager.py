@@ -185,6 +185,24 @@ class ConfigManager:
             f"以及新系统配置 (宗门/Boss/秘境/炼丹)"
         )
     
+    # ==================== 物品和武器相关方法 ====================
+    
+    def get_items_config(self) -> Dict[str, dict]:
+        """获取物品配置
+        
+        Returns:
+            物品配置字典，key为物品名称
+        """
+        return self.items_data
+    
+    def get_weapons_config(self) -> Dict[str, dict]:
+        """获取武器配置
+        
+        Returns:
+            武器配置字典，key为武器名称
+        """
+        return self.weapons_data
+    
     # ==================== 技能相关方法 ====================
     
     def get_skill_by_id(self, skill_id: str) -> Optional[dict]:

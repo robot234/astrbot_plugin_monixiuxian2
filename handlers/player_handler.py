@@ -17,7 +17,7 @@ CMD_PLAYER_INFO = "我的信息"
 CMD_START_CULTIVATION = "闭关"
 CMD_END_CULTIVATION = "出关"
 CMD_CHECK_IN = "签到"
-REBIRTH_COOLDOWN = 7 * 24 * 3600
+REBIRTH_COOLDOWN = 1 * 3600  # 1小时冷却
 
 __all__ = ["PlayerHandler"]
 
@@ -381,7 +381,8 @@ class PlayerHandler:
             "━━━━━━━━━━━━━━━\n"
             "闭关期间，你将与世隔绝，潜心修炼。\n"
             f"💡 发送「{CMD_END_CULTIVATION}」结束闭关\n"
-            "⏱️ 每分钟将获得修为，受灵根资质影响。"
+            "⏱️ 每分钟将获得修为，受灵根资质影响。\n"
+            "💚 闭关期间会缓慢恢复HP和MP。"
         )
 
     @player_required
@@ -442,6 +443,40 @@ class PlayerHandler:
             pill_multipliers
         )
 
+        # ========== 计算HP/MP回复 ==========
+        # 基础回复率：每分钟回复 0.5% 的最大HP/MP
+        # 功法加成：如果有主修心法，额外增加回复效率
+        base_recovery_rate = 0.005  # 每分钟 0.5%
+        
+        # 功法回复加成
+        technique_recovery_bonus = 0.0
+        if player.main_technique:
+            technique_config = self.config_manager.get_technique_by_name(player.main_technique)
+            if technique_config:
+                passive_effects = technique_config.get("passive_effects", {})
+                technique_recovery_bonus = passive_effects.get("regeneration", 0)
+        
+        # 计算总回复率
+        total_recovery_rate = base_recovery_rate + technique_recovery_bonus
+        
+        # 计算回复量（使用有效时长）
+        hp_recovery_percent = min(1.0, effective_minutes * total_recovery_rate)
+        mp_recovery_percent = min(1.0, effective_minutes * total_recovery_rate)
+        
+        # 计算实际回复量
+        hp_before = player.hp
+        mp_before = player.mp
+        
+        hp_recovery = int(player.max_hp * hp_recovery_percent)
+        mp_recovery = int(player.max_mp * mp_recovery_percent)
+        
+        # 应用回复
+        player.hp = min(player.max_hp, player.hp + hp_recovery)
+        player.mp = min(player.max_mp, player.mp + mp_recovery)
+        
+        actual_hp_recovery = player.hp - hp_before
+        actual_mp_recovery = player.mp - mp_before
+
         # 更新玩家数据
         player.experience += gained_exp
         player.state = "空闲"
@@ -462,13 +497,22 @@ class PlayerHandler:
         exceed_msg = ""
         if exceeded_time:
             effective_hours = MAX_CULTIVATION_MINUTES // 60
-            exceed_msg = f"\n⚠️ 闭关超过{effective_hours}小时，仅计算前{effective_hours}小时修为"
+            exceed_msg = f"\n⚠️ 闭关超过{effective_hours}小时，仅计算前{effective_hours}小时收益"
+
+        # 回复信息
+        recovery_msg = ""
+        if actual_hp_recovery > 0 or actual_mp_recovery > 0:
+            recovery_msg = (
+                f"\n💚 HP恢复：+{actual_hp_recovery} ({player.hp}/{player.max_hp})"
+                f"\n💙 MP恢复：+{actual_mp_recovery} ({player.mp}/{player.max_mp})"
+            )
 
         reply_msg = (
             "🌟 道友出关成功！\n"
             "━━━━━━━━━━━━━━━\n"
             f"⏱️ 闭关时长：{time_str}\n"
-            f"📈 获得修为：{gained_exp:,}{exceed_msg}\n"
+            f"📈 获得修为：{gained_exp:,}{exceed_msg}"
+            f"{recovery_msg}\n"
             f"💫 当前修为：{player.experience:,}\n"
             "━━━━━━━━━━━━━━━\n"
             "道友已回归红尘，可继续修行。"
@@ -517,7 +561,7 @@ class PlayerHandler:
 
     @player_required
     async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):
-        """弃道重修（7天冷却）"""
+        """弃道重修（1小时冷却）"""
         user_cd = await self.db.ext.get_user_cd(player.user_id)
         if user_cd and user_cd.type != UserStatus.IDLE:
             status_name = UserStatus.get_name(user_cd.type)
@@ -540,20 +584,19 @@ class PlayerHandler:
             diff = now - int(last_ts)
             if diff < REBIRTH_COOLDOWN:
                 remaining = REBIRTH_COOLDOWN - diff
-                days = remaining // 86400
-                hours = (remaining % 86400) // 3600
-                minutes = (remaining % 3600) // 60
+                minutes = remaining // 60
+                seconds = remaining % 60
                 yield event.plain_result(
                     "⌛ 弃道重修冷却中\n"
                     "━━━━━━━━━━━━━━━\n"
-                    f"距离下次重修还需：{days}天{hours}小时{minutes}分钟"
+                    f"距离下次重修还需：{minutes}分钟{seconds}秒"
                 )
                 return
 
         if confirm_text.strip() != "确认":
             yield event.plain_result(
                 "⚠️ 弃道重修将删除当前角色的所有数据，并无法撤回！\n"
-                "限制：每7天只能重修一次，且必须在空闲状态、无贷款时使用。\n"
+                "限制：每1小时只能重修一次，且必须在空闲状态、无贷款时使用。\n"
                 "━━━━━━━━━━━━━━━\n"
                 "若你已做好准备，请发送：\n"
                 "弃道重修 确认"
@@ -567,5 +610,5 @@ class PlayerHandler:
             "💀 你选择了弃道重修，旧生一切化为尘埃。\n"
             "━━━━━━━━━━━━━━━\n"
             "可立即使用「我要修仙」重新踏上仙途。\n"
-            "（7天内不可再次重修）"
+            "（1小时内不可再次重修）"
         )

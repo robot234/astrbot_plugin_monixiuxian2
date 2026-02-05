@@ -5,11 +5,13 @@
 
 from typing import Tuple, List, TYPE_CHECKING, Optional
 from ..data.data_manager import DataBase
-from ..managers.combat_manager import CombatManager
 
 if TYPE_CHECKING:
     from ..config_manager import ConfigManager
     from ..models import Player
+    from ..core.battle_manager import BattleManager
+    from ..core.equipment_manager import EquipmentManager
+    from ..core.skill_manager import SkillManager
 
 # 宗门职位映射（安全映射，防止索引越界）
 POSITION_MAP = {
@@ -49,14 +51,19 @@ def _safe_name(player: Optional["Player"], fallback_id) -> str:
 class RankingManager:
     """排行榜系统管理器"""
     
-    def __init__(self, db: DataBase, combat_mgr: CombatManager, config_manager: "ConfigManager"):
+    def __init__(
+        self, 
+        db: DataBase, 
+        battle_mgr: "BattleManager", 
+        config_manager: "ConfigManager",
+        equipment_manager: "EquipmentManager",
+        skill_manager: "SkillManager"
+    ):
         self.db = db
-        self.combat_mgr = combat_mgr
+        self.battle_mgr = battle_mgr
         self.config_manager = config_manager
-        
-        # 延迟导入，避免循环依赖，只初始化一次
-        from ..core import EquipmentManager
-        self.equipment_manager = EquipmentManager(self.db, self.config_manager)
+        self.equipment_manager = equipment_manager
+        self.skill_manager = skill_manager
     
     async def get_level_ranking(self, limit: int = 10) -> Tuple[bool, str]:
         """
