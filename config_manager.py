@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from astrbot.api import logger
 from .data.default_configs import SECT_CONFIG, BOSS_CONFIG, RIFT_CONFIG, ALCHEMY_CONFIG
@@ -18,6 +18,10 @@ class ConfigManager:
         self.exp_pills_data: Dict[str, dict] = {}  # 修为丹数据，key为丹药名称
         self.utility_pills_data: Dict[str, dict] = {}  # 功能丹数据，key为丹药名称
         self.storage_rings_data: Dict[str, dict] = {}  # 储物戒数据，key为储物戒名称
+        
+        # 技能和功法配置
+        self.skills_data: Dict[str, dict] = {}  # 技能数据，key为技能ID
+        self.techniques_data: Dict[str, dict] = {}  # 功法数据，key为功法ID
         
         # 新增系统配置
         self.sect_config: Dict[str, Any] = {}
@@ -46,6 +50,50 @@ class ConfigManager:
         except Exception as e:
             logger.error(f"加载数据文件 {file_path} 失败: {e}")
             return []
+    
+    def _load_json(self, filename: str) -> Dict[str, dict]:
+        """加载JSON配置文件（字典格式）
+        
+        Args:
+            filename: 配置文件名
+            
+        Returns:
+            配置字典，key为ID或名称
+        """
+        config_dir = self._base_dir / "config"
+        file_path = config_dir / filename
+        
+        if not file_path.exists():
+            logger.warning(f"配置文件 {file_path} 不存在，将使用空数据。")
+            return {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+                if isinstance(data, dict):
+                    # 确保每个条目都有id字段
+                    for item_id, item_data in data.items():
+                        if isinstance(item_data, dict) and "id" not in item_data:
+                            item_data["id"] = item_id
+                    logger.info(f"成功加载 {filename} (共 {len(data)} 条数据)。")
+                    return data
+                elif isinstance(data, list):
+                    # 如果是列表格式，转换为字典
+                    result = {}
+                    for item in data:
+                        if isinstance(item, dict):
+                            item_id = item.get("id", item.get("name", ""))
+                            if item_id:
+                                result[item_id] = item
+                    logger.info(f"成功加载 {filename} (共 {len(result)} 条数据)。")
+                    return result
+                else:
+                    logger.error(f"配置文件 {filename} 格式不正确。")
+                    return {}
+        except Exception as e:
+            logger.error(f"加载配置文件 {filename} 失败: {e}")
+            return {}
             
     def _load_config_with_default(self, file_path: Path, default_config: Dict) -> Dict:
         """加载配置，如果不存在则创建默认配置"""
@@ -112,6 +160,10 @@ class ConfigManager:
         self.utility_pills_data = self._load_items_data(config_dir / "utility_pills.json")
         self.storage_rings_data = self._load_items_data(config_dir / "storage_rings.json")
         
+        # 加载技能和功法配置
+        self.skills_data = self._load_json("skills.json")
+        self.techniques_data = self._load_json("techniques.json")
+        
         # 加载新系统配置
         self.sect_config = self._load_config_with_default(config_dir / "sect_config.json", SECT_CONFIG)
         self.boss_config = self._load_config_with_default(config_dir / "boss_config.json", BOSS_CONFIG)
@@ -128,8 +180,120 @@ class ConfigManager:
             f"配置管理器初始化完成，"
             f"加载了 {len(self.level_data)} 个灵修境界配置，"
             f"{len(self.body_level_data)} 个体修境界配置，"
+            f"{len(self.skills_data)} 个技能配置，"
+            f"{len(self.techniques_data)} 个功法配置，"
             f"以及新系统配置 (宗门/Boss/秘境/炼丹)"
         )
+    
+    # ==================== 技能相关方法 ====================
+    
+    def get_skill_by_id(self, skill_id: str) -> Optional[dict]:
+        """根据技能ID获取技能配置
+        
+        Args:
+            skill_id: 技能ID
+            
+        Returns:
+            技能配置字典，如果找不到返回None
+        """
+        return self.skills_data.get(skill_id)
+    
+    def get_skill_by_name(self, skill_name: str) -> Optional[dict]:
+        """根据技能名称获取技能配置
+        
+        Args:
+            skill_name: 技能名称
+            
+        Returns:
+            技能配置字典，如果找不到返回None
+        """
+        for skill_id, skill_config in self.skills_data.items():
+            if skill_config.get("name") == skill_name:
+                return skill_config
+        return None
+    
+    def get_all_skills(self) -> Dict[str, dict]:
+        """获取所有技能配置
+        
+        Returns:
+            技能配置字典，key为技能ID
+        """
+        return self.skills_data
+    
+    # ==================== 功法相关方法 ====================
+    
+    def get_technique_by_id(self, technique_id: str) -> Optional[dict]:
+        """根据功法ID获取功法配置
+        
+        Args:
+            technique_id: 功法ID
+            
+        Returns:
+            功法配置字典，如果找不到返回None
+        """
+        return self.techniques_data.get(technique_id)
+    
+    def get_technique_by_name(self, name: str) -> Optional[dict]:
+        """根据功法名称获取功法配置
+        
+        Args:
+            name: 功法名称
+            
+        Returns:
+            功法配置字典，如果找不到返回None
+        """
+        # 首先尝试直接用名称作为ID查找
+        if name in self.techniques_data:
+            return self.techniques_data[name]
+        
+        # 然后遍历查找name字段匹配的
+        for tech_id, tech_config in self.techniques_data.items():
+            if tech_config.get("name") == name:
+                return tech_config
+        
+        return None
+    
+    def get_all_techniques(self) -> Dict[str, dict]:
+        """获取所有功法配置
+        
+        Returns:
+            功法配置字典，key为功法ID
+        """
+        return self.techniques_data
+    
+    def get_techniques_config(self) -> Dict[str, dict]:
+        """获取功法配置（兼容旧接口）
+        
+        Returns:
+            功法配置字典
+        """
+        return self.techniques_data
+    
+    # ==================== 境界相关方法 ====================
+    
+    def get_level_config(self) -> Dict[str, dict]:
+        """获取灵修境界配置（字典格式，key为level_index字符串）
+        
+        Returns:
+            境界配置字典
+        """
+        result = {}
+        for i, level in enumerate(self.level_data):
+            result[str(i)] = level
+        return result
+    
+    def get_body_level_config(self) -> Dict[str, dict]:
+        """获取体修境界配置（字典格式，key为level_index字符串）
+        
+        Returns:
+            境界配置字典
+        """
+        result = {}
+        for i, level in enumerate(self.body_level_data):
+            result[str(i)] = level
+        return result
+    
+    # ==================== 丹药相关方法 ====================
     
     def is_pill(self, item_name: str) -> bool:
         """检查物品是否为丹药类型（统一的丹药判断方法）"""

@@ -60,37 +60,37 @@
       "PAVILION_REFRESH_HOURS": {
         "description": "阁楼刷新时间（小时）",
         "type": "int",
-        "default": 6,
+        "default": 1,
         "hint": "丹阁、器阁、百宝阁自动刷新的间隔时间（小时）。设置为0则不自动刷新。"
       },
       "PAVILION_PILL_COUNT": {
         "description": "丹阁展示数量",
         "type": "int",
-        "default": 10,
+        "default": 20,
         "hint": "丹阁展示的丹药数量。"
       },
       "PAVILION_WEAPON_COUNT": {
         "description": "器阁展示数量",
         "type": "int",
-        "default": 10,
+        "default": 20,
         "hint": "器阁展示的武器数量。"
       },
       "PAVILION_TREASURE_COUNT": {
         "description": "百宝阁展示数量",
         "type": "int",
-        "default": 15,
+        "default": 25,
         "hint": "百宝阁展示的物品数量。"
       },
       "SHOP_DISCOUNT_MIN": {
         "description": "折扣最小值",
         "type": "float",
-        "default": 0.8,
+        "default": 0.6,
         "hint": "物品折扣的最小值（0.8表示8折）。"
       },
       "SHOP_DISCOUNT_MAX": {
         "description": "折扣最大值",
         "type": "float",
-        "default": 1.2,
+        "default": 1.4,
         "hint": "物品折扣的最大值（1.2表示1.2倍价格）。"
       },
       "SHOP_STOCK_DIVISOR": {

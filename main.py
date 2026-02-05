@@ -12,14 +12,16 @@ from .handlers import (
     SectHandlers, BossHandlers, CombatHandlers, RankingHandlers,
     RiftHandlers, AdventureHandlers, AlchemyHandlers, ImpartHandlers,
     NicknameHandler, BankHandlers, BountyHandlers, ImpartPkHandlers,
-    BlessedLandHandlers, SpiritFarmHandlers, DualCultivationHandlers, SpiritEyeHandlers
+    BlessedLandHandlers, SpiritFarmHandlers, DualCultivationHandlers, SpiritEyeHandlers,
+    SkillHandler
 )
 from .managers import (
-    CombatManager, SectManager, BossManager, RiftManager, 
+    SectManager, BossManager, RiftManager, 
     RankingManager, AdventureManager, AlchemyManager, ImpartManager,
     BankManager, BountyManager, ImpartPkManager,
     BlessedLandManager, SpiritFarmManager, DualCultivationManager, SpiritEyeManager
 )
+from .core.battle_manager import BattleManager
 
 
 def require_whitelist(func):
@@ -54,7 +56,6 @@ CMD_TREASURE_PAVILION = "百宝阁"
 CMD_ITEM_INFO = "物品信息"
 CMD_BUY = "购买"
 CMD_STORAGE_RING = "储物戒"
-CMD_STORE_ITEM = "存入"
 CMD_RETRIEVE_ITEM = "取出"
 CMD_UPGRADE_RING = "更换储物戒"
 CMD_DISCARD_ITEM = "丢弃"
@@ -74,6 +75,7 @@ CMD_SECT_DONATE = "宗门捐献"
 CMD_SECT_KICK = "踢出成员"
 CMD_SECT_TRANSFER = "宗主传位"
 CMD_SECT_TASK = "宗门任务"
+CMD_FINISH_SECT_TASK = "完成宗门任务"
 CMD_SECT_POSITION = "职位变更"
 
 # Boss系统指令
@@ -141,6 +143,7 @@ CMD_BLESSED_LAND_INFO = "我的洞天"
 CMD_BLESSED_LAND_BUY = "购买洞天"
 CMD_BLESSED_LAND_UPGRADE = "升级洞天"
 CMD_BLESSED_LAND_COLLECT = "洞天收取"
+CMD_BLESSED_LAND_ADVANCE = "进阶洞天"
 
 # Phase 4: 灵田
 CMD_SPIRIT_FARM_INFO = "我的灵田"
@@ -159,6 +162,12 @@ CMD_SPIRIT_EYE_INFO = "灵眼信息"
 CMD_SPIRIT_EYE_CLAIM = "抢占灵眼"
 CMD_SPIRIT_EYE_COLLECT = "灵眼收取"
 CMD_SPIRIT_EYE_RELEASE = "释放灵眼"
+
+# 技能系统指令
+CMD_SKILL_LIST = "技能列表"
+CMD_EQUIP_SKILL = "装备技能"
+CMD_UNEQUIP_SKILL = "卸下技能"
+CMD_SKILL_INFO = "技能信息"
 
 CMD_REBIRTH = "弃道重修"
 class XiuXianPlugin(Star):
@@ -187,13 +196,20 @@ class XiuXianPlugin(Star):
         
         # 初始化核心管理器
         from .core import StorageRingManager
-        self.storage_ring_mgr = StorageRingManager(self.db, self.config_manager)
+        from .core.equipment_manager import EquipmentManager
+        from .core.skill_manager import SkillManager
         
-        self.combat_mgr = CombatManager()
+        self.storage_ring_mgr = StorageRingManager(self.db, self.config_manager)
+        self.equipment_mgr = EquipmentManager(self.db, self.config_manager, self.storage_ring_mgr)
+        self.skill_mgr = SkillManager(self.db, self.config_manager)
+        
+        # 初始化统一战斗管理器
+        self.battle_mgr = BattleManager(self.config_manager)
+        
         self.sect_mgr = SectManager(self.db, self.config_manager)
-        self.boss_mgr = BossManager(self.db, self.combat_mgr, self.config_manager, self.storage_ring_mgr)
+        self.boss_mgr = BossManager(self.db, self.battle_mgr, self.config_manager, self.storage_ring_mgr, self.equipment_mgr, self.skill_mgr)
         self.rift_mgr = RiftManager(self.db, self.config_manager, self.storage_ring_mgr)
-        self.rank_mgr = RankingManager(self.db, self.combat_mgr, self.config_manager)
+        self.rank_mgr = RankingManager(self.db, self.battle_mgr, self.config_manager, self.equipment_mgr, self.skill_mgr)
         self.adventure_mgr = AdventureManager(self.db, self.storage_ring_mgr)
         self.alchemy_mgr = AlchemyManager(self.db, self.config_manager, self.storage_ring_mgr)
         self.impart_mgr = ImpartManager(self.db)
@@ -201,7 +217,7 @@ class XiuXianPlugin(Star):
         # 初始化新功能处理器
         self.sect_handlers = SectHandlers(self.db, self.sect_mgr)
         self.boss_handlers = BossHandlers(self.db, self.boss_mgr)
-        self.combat_handlers = CombatHandlers(self.db, self.combat_mgr, self.config_manager)
+        self.combat_handlers = CombatHandlers(self.db, self.config_manager)
         self.ranking_handlers = RankingHandlers(self.db, self.rank_mgr)
         self.rift_handlers = RiftHandlers(self.db, self.rift_mgr)
         self.adventure_handlers = AdventureHandlers(self.db, self.adventure_mgr)
@@ -215,8 +231,8 @@ class XiuXianPlugin(Star):
         self.bank_handlers = BankHandlers(self.db, self.bank_mgr)
         self.bounty_handlers = BountyHandlers(self.db, self.bounty_mgr)
         
-        # Phase 3: 传承PK
-        self.impart_pk_mgr = ImpartPkManager(self.db, self.combat_mgr)
+        # Phase 3: 传承PK - 使用统一的 BattleManager
+        self.impart_pk_mgr = ImpartPkManager(self.db, self.battle_mgr, self.config_manager, self.equipment_mgr, self.skill_mgr)
         self.impart_pk_handlers = ImpartPkHandlers(self.db, self.impart_pk_mgr)
         
         # Phase 4: 扩展功能
@@ -228,6 +244,9 @@ class XiuXianPlugin(Star):
         self.dual_cult_handlers = DualCultivationHandlers(self.db, self.dual_cult_mgr)
         self.spirit_eye_mgr = SpiritEyeManager(self.db)
         self.spirit_eye_handlers = SpiritEyeHandlers(self.db, self.spirit_eye_mgr)
+        
+        # 技能系统
+        self.skill_handler = SkillHandler(self.db, self.config_manager)
         
         self.boss_task = None # Boss生成任务
         self.loan_check_task = None # 贷款逾期检查任务
@@ -710,11 +729,6 @@ class XiuXianPlugin(Star):
         async for r in self.storage_ring_handler.handle_storage_ring(event):
             yield r
 
-    @filter.command(CMD_STORE_ITEM, "存入物品到储物戒")
-    @require_whitelist
-    async def handle_store_item(self, event: AstrMessageEvent, args: str = ""):
-        async for r in self.storage_ring_handler.handle_store_item(event, args):
-            yield r
 
     @filter.command(CMD_RETRIEVE_ITEM, "从储物戒取出物品")
     @require_whitelist
@@ -802,6 +816,12 @@ class XiuXianPlugin(Star):
         async for r in self.sect_handlers.handle_sect_task(event):
             yield r
 
+    @filter.command(CMD_FINISH_SECT_TASK, "完成宗门任务（解决卡住的情况）")
+    @require_whitelist
+    async def handle_finish_sect_task(self, event: AstrMessageEvent):
+        async for r in self.sect_handlers.handle_finish_sect_task(event):
+            yield r
+
     @filter.command(CMD_SECT_LIST, "查看宗门列表")
     @require_whitelist
     async def handle_sect_list(self, event: AstrMessageEvent):
@@ -843,6 +863,13 @@ class XiuXianPlugin(Star):
     @filter.command(CMD_BOSS_INFO, "查看世界Boss状态")
     @require_whitelist
     async def handle_boss_info(self, event: AstrMessageEvent):
+        async for r in self.boss_handlers.handle_boss_info(event):
+            yield r
+    
+    @filter.command("世界boss", "查看世界Boss状态")
+    @require_whitelist
+    async def handle_boss_info_lower(self, event: AstrMessageEvent):
+        # 调用相同的处理逻辑
         async for r in self.boss_handlers.handle_boss_info(event):
             yield r
 
@@ -1004,7 +1031,7 @@ class XiuXianPlugin(Star):
 
     @filter.command(CMD_ALCHEMY_CRAFT, "炼制丹药")
     @require_whitelist
-    async def handle_alchemy_craft(self, event: AstrMessageEvent, pill_id: int = 0):
+    async def handle_alchemy_craft(self, event: AstrMessageEvent, pill_id: str = ""):
         async for r in self.alchemy_handlers.handle_craft(event, pill_id):
             yield r
 
@@ -1140,6 +1167,12 @@ class XiuXianPlugin(Star):
         async for r in self.blessed_land_handlers.handle_collect(event):
             yield r
 
+    @filter.command(CMD_BLESSED_LAND_ADVANCE, "进阶洞天")
+    @require_whitelist
+    async def handle_blessed_land_advance(self, event: AstrMessageEvent, target_type: int = 0):
+        async for r in self.blessed_land_handlers.handle_advance(event, target_type):
+            yield r
+
     # ===== Phase 4: 灵田 =====
     @filter.command(CMD_SPIRIT_FARM_INFO, "查看灵田")
     @require_whitelist
@@ -1214,3 +1247,28 @@ class XiuXianPlugin(Star):
     async def handle_spirit_eye_release(self, event: AstrMessageEvent):
         async for r in self.spirit_eye_handlers.handle_release(event):
             yield r
+
+    # ===== 技能系统指令 =====
+    @filter.command(CMD_SKILL_LIST, "查看技能列表")
+    @require_whitelist
+    async def cmd_skill_list(self, event: AstrMessageEvent):
+        async for result in self.skill_handler.handle_skill_list(event):
+            yield result
+
+    @filter.command(CMD_EQUIP_SKILL, "装备技能")
+    @require_whitelist
+    async def cmd_equip_skill(self, event: AstrMessageEvent, skill_name: str = ""):
+        async for result in self.skill_handler.handle_equip_skill(event, skill_name):
+            yield result
+
+    @filter.command(CMD_UNEQUIP_SKILL, "卸下技能")
+    @require_whitelist
+    async def cmd_unequip_skill(self, event: AstrMessageEvent, skill_name: str = ""):
+        async for result in self.skill_handler.handle_unequip_skill(event, skill_name):
+            yield result
+
+    @filter.command(CMD_SKILL_INFO, "查看技能信息")
+    @require_whitelist
+    async def cmd_skill_info(self, event: AstrMessageEvent, skill_name: str = ""):
+        async for result in self.skill_handler.handle_skill_info(event, skill_name):
+            yield result

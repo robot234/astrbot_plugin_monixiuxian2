@@ -33,6 +33,13 @@ class Item:
     spiritual_qi: int = 0  # 灵气加成（仅心法有效，灵修）
     blood_qi: int = 0  # 气血加成（仅心法有效，体修）
 
+    # 新增战斗属性加成
+    speed: int = 0  # 速度加成
+    critical_rate: float = 0.0  # 暴击率加成
+    critical_damage: float = 0.0  # 暴击伤害加成
+    hp_bonus: int = 0  # HP加成
+    mp_bonus: int = 0  # MP加成
+
     def get_attribute_display(self) -> str:
         """获取属性加成的显示文本"""
         attrs = []
@@ -52,6 +59,16 @@ class Item:
             attrs.append(f"灵气+{self.spiritual_qi}")
         if self.blood_qi > 0:
             attrs.append(f"气血+{self.blood_qi}")
+        if self.speed > 0:
+            attrs.append(f"速度+{self.speed}")
+        if self.critical_rate > 0:
+            attrs.append(f"暴击率+{self.critical_rate:.1%}")
+        if self.critical_damage > 0:
+            attrs.append(f"暴击伤害+{self.critical_damage:.1%}")
+        if self.hp_bonus > 0:
+            attrs.append(f"HP+{self.hp_bonus}")
+        if self.mp_bonus > 0:
+            attrs.append(f"MP+{self.mp_bonus}")
         return "、".join(attrs) if attrs else "无属性加成"
 
 @dataclass
@@ -84,6 +101,15 @@ class Player:
     mp: int = 0  # 当前真元值
     atk: int = 0  # 攻击力
     atkpractice: int = 0  # 攻击修炼等级，每级提升4%攻击力
+
+    # 新增战斗属性
+    max_hp: int = 100  # 最大生命值
+    max_mp: int = 50  # 最大真元
+    speed: int = 10  # 速度
+    critical_rate: float = 0.05  # 暴击率
+    critical_damage: float = 1.5  # 暴击伤害倍率
+    hit_rate: float = 0.95  # 命中率
+    dodge_rate: float = 0.05  # 闪避率
 
     # 灵修/体修专用属性
     spiritual_qi: int = 100  # 当前灵气（灵修专用）
@@ -121,6 +147,10 @@ class Player:
     # Phase 1: 每日限制系统
     daily_pill_usage: str = "{}"  # 每日丹药使用次数（JSON字符串，格式：{pill_id: count}）
     last_daily_reset: str = ""  # 上次每日重置日期（格式：YYYY-MM-DD）
+
+    # 技能系统字段
+    learned_skills: str = "[]"  # 已学会的技能ID列表（JSON字符串）
+    equipped_skills: str = "[]"  # 已装备的技能ID列表（JSON字符串，最多2个）
 
     def get_level(self, config_manager: "ConfigManager") -> str:
         """获取境界名称"""
@@ -191,6 +221,28 @@ class Player:
         """设置储物戒物品"""
         self.storage_ring_items = json.dumps(items, ensure_ascii=False)
 
+    def get_learned_skills(self) -> List[str]:
+        """获取已学会的技能ID列表"""
+        try:
+            return json.loads(self.learned_skills)
+        except json.JSONDecodeError:
+            return []
+
+    def set_learned_skills(self, skills: List[str]):
+        """设置已学会的技能ID列表"""
+        self.learned_skills = json.dumps(skills, ensure_ascii=False)
+
+    def get_equipped_skills(self) -> List[str]:
+        """获取已装备的技能ID列表"""
+        try:
+            return json.loads(self.equipped_skills)
+        except json.JSONDecodeError:
+            return []
+
+    def set_equipped_skills(self, skills: List[str]):
+        """设置已装备的技能ID列表"""
+        self.equipped_skills = json.dumps(skills, ensure_ascii=False)
+
     def get_total_attributes(self, equipped_items: List[Item], pill_multipliers: Optional[dict] = None) -> dict:
         """计算包含装备加成和丹药效果的总属性
 
@@ -213,6 +265,14 @@ class Player:
             "physical_defense": self.physical_defense,
             "mental_power": self.mental_power,
             "exp_multiplier": 0.0,  # 基础修为倍率为0，只来自心法
+            # 新增战斗属性
+            "max_hp": self.max_hp,
+            "max_mp": self.max_mp,
+            "speed": self.speed,
+            "critical_rate": self.critical_rate,
+            "critical_damage": self.critical_damage,
+            "hit_rate": self.hit_rate,
+            "dodge_rate": self.dodge_rate,
         }
 
         # 叠加装备属性
@@ -222,6 +282,13 @@ class Player:
             total["magic_defense"] += item.magic_defense
             total["physical_defense"] += item.physical_defense
             total["mental_power"] += item.mental_power
+
+            # 新增装备属性加成
+            total["speed"] += item.speed
+            total["critical_rate"] += item.critical_rate
+            total["critical_damage"] += item.critical_damage
+            total["max_hp"] += item.hp_bonus
+            total["max_mp"] += item.mp_bonus
 
             # 心法专属属性
             if item.item_type == "main_technique":
