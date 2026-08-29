@@ -17,7 +17,13 @@ class RankingHandlers:
         """战力排行"""
         success, msg = await self.rank_mgr.get_power_ranking()
         yield event.plain_result(msg)
-    
+
+    async def handle_my_arena_status(self, event: AstrMessageEvent):
+        """我的擂台信息"""
+        user_id = str(event.get_sender_id())
+        success, msg = await self.rank_mgr.get_my_arena_status(user_id)
+        yield event.plain_result(msg)
+
     async def handle_rank_wealth(self, event: AstrMessageEvent):
         """财富排行"""
         success, msg = await self.rank_mgr.get_wealth_ranking()

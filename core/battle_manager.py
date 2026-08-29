@@ -306,14 +306,15 @@ class BattleManager:
         hit_rate = 0.95 + permanent_gains.get("hit_rate", 0)
         dodge_rate = 0.05 + permanent_gains.get("dodge_rate", 0)
         
-        # 3. 叠加装备加成
+        # 3. 叠加装备加成（武器、防具）
         if equipment_manager:
             # 获取物品和武器配置数据
             items_data = self.config_manager.get_items_config()
             weapons_data = self.config_manager.get_weapons_config()
+            techniques_data = self.config_manager.get_techniques_config()
             
-            # 获取已装备物品列表
-            equipped_items = equipment_manager.get_equipped_items(player, items_data, weapons_data)
+            # 获取已装备物品列表（包含功法）
+            equipped_items = equipment_manager.get_equipped_items(player, items_data, weapons_data, techniques_data)
             
             # 累加装备属性
             for item in equipped_items:
@@ -327,7 +328,7 @@ class BattleManager:
                 base_hp += item.hp_bonus
                 base_mp += item.mp_bonus
         
-        # 4. 叠加功法属性和被动效果
+        # 4. 叠加功法被动效果
         techniques_list = player.get_techniques_list()
         techniques_config = self.config_manager.get_techniques_config()
         
@@ -358,38 +359,20 @@ class BattleManager:
             "slow_effect": 0.0,
         }
         
-        # 主修心法
+        # 主修心法 - 应用被动效果
         if player.main_technique:
             main_tech = techniques_config.get(player.main_technique, {})
-            
-            # 基础属性加成
-            base_hp += main_tech.get("hp_bonus", 0)
-            base_mp += main_tech.get("mp_bonus", 0)
-            base_physical_attack += main_tech.get("physical_damage", 0)
-            base_magic_attack += main_tech.get("magic_damage", 0)
-            base_physical_defense += main_tech.get("physical_defense", 0)
-            base_magic_defense += main_tech.get("magic_defense", 0)
-            base_stats["speed"] += main_tech.get("speed", 0)
-            base_stats["critical_rate"] += main_tech.get("critical_rate", 0)
-            base_stats["critical_damage"] += main_tech.get("critical_damage", 0)
             
             # 应用被动效果
             self._apply_technique_passive_effects(main_tech, base_stats, percent_bonuses)
         
-        # 辅修功法
-        for tech_id in techniques_list:
-            tech = techniques_config.get(tech_id, {})
+        # 辅修功法 - 应用被动效果（排除主修心法，避免重复应用）
+        for tech_name in techniques_list:
+            # 跳过主修心法，避免重复应用
+            if tech_name == player.main_technique:
+                continue
             
-            # 基础属性加成
-            base_hp += tech.get("hp_bonus", 0)
-            base_mp += tech.get("mp_bonus", 0)
-            base_physical_attack += tech.get("physical_damage", 0)
-            base_magic_attack += tech.get("magic_damage", 0)
-            base_physical_defense += tech.get("physical_defense", 0)
-            base_magic_defense += tech.get("magic_defense", 0)
-            base_stats["speed"] += tech.get("speed", 0)
-            base_stats["critical_rate"] += tech.get("critical_rate", 0)
-            base_stats["critical_damage"] += tech.get("critical_damage", 0)
+            tech = techniques_config.get(tech_name, {})
             
             # 应用被动效果
             self._apply_technique_passive_effects(tech, base_stats, percent_bonuses)

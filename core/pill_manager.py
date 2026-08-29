@@ -80,6 +80,42 @@ class PillManager:
 
         return None
 
+    def _is_breakthrough_pill(self, pill_data: dict) -> bool:
+        """判断是否为破境丹
+        
+        Args:
+            pill_data: 丹药配置数据
+            
+        Returns:
+            是否为破境丹
+        """
+        subtype = pill_data.get("subtype", "")
+        # 支持多种破境丹类型标识
+        return subtype in {"breakthrough", "breakthrough_boost", "breakthrough_debuff"}
+
+    def _get_breakthrough_bonus(self, pill_data: dict) -> float:
+        """获取破境丹的突破加成值
+        
+        Args:
+            pill_data: 丹药配置数据
+            
+        Returns:
+            突破加成值（0.0 ~ 1.0）
+        """
+        # 优先从顶层 breakthrough_bonus 获取
+        bonus = pill_data.get("breakthrough_bonus", 0)
+        if bonus > 0:
+            return bonus
+        
+        # 从 effect.add_breakthrough_bonus 获取（items.json 格式）
+        effect = pill_data.get("effect", {})
+        if isinstance(effect, dict):
+            bonus = effect.get("add_breakthrough_bonus", 0)
+            if bonus > 0:
+                return bonus
+        
+        return 0.0
+
     async def update_temporary_effects(self, player: Player):
         """更新临时丹药效果，移除过期效果
 
@@ -146,9 +182,13 @@ class PillManager:
         effect_type = pill_data.get("effect_type", "instant")
         subtype = pill_data.get("subtype", "")
 
-        # 禁止服用破境丹
-        if subtype == "breakthrough":
-            return False, f"【{pill_name}】是破境丹，只能在突破时使用！"
+        # 处理破境丹（支持多种类型标识）
+        if self._is_breakthrough_pill(pill_data):
+            # 如果是临时效果类型的破境丹，允许服用以获得临时加成
+            if effect_type == "temporary":
+                return await self._use_temporary_pill(player, pill_name, pill_data)
+            else:
+                return False, f"【{pill_name}】是破境丹，只能在突破时使用，或先服用获得临时加成！"
 
         if subtype == "exp":
             # 修为丹
@@ -244,6 +284,12 @@ class PillManager:
         for key in effect_keys:
             if key in pill_data:
                 effect[key] = pill_data[key]
+        
+        # 从 effect 字段中提取 breakthrough_bonus（items.json 格式）
+        if "breakthrough_bonus" not in effect or effect.get("breakthrough_bonus", 0) == 0:
+            effect_data = pill_data.get("effect", {})
+            if isinstance(effect_data, dict) and "add_breakthrough_bonus" in effect_data:
+                effect["breakthrough_bonus"] = effect_data["add_breakthrough_bonus"]
 
         # 添加到活跃效果
         effects = player.get_active_pill_effects()
@@ -337,12 +383,12 @@ class PillManager:
             cost = pill_data["blood_qi_cost_per_minute"]
             effect_desc.append(f"每分钟扣除气血-{cost}")
 
-        if "breakthrough_bonus" in pill_data:
-            bonus = pill_data["breakthrough_bonus"]
-            if bonus > 0:
-                effect_desc.append(f"突破成功率+{bonus:.0%}")
-            else:
-                effect_desc.append(f"突破成功率{bonus:.0%}")
+        # 处理突破加成（支持两种格式）
+        breakthrough_bonus = self._get_breakthrough_bonus(pill_data)
+        if breakthrough_bonus > 0:
+            effect_desc.append(f"突破成功率+{breakthrough_bonus:.0%}")
+        elif breakthrough_bonus < 0:
+            effect_desc.append(f"突破成功率{breakthrough_bonus:.0%}")
 
         effects_str = "、".join(effect_desc) if effect_desc else "特殊效果"
 
@@ -767,7 +813,8 @@ class PillManager:
                 continue
 
             subtype = effect.get("subtype", "")
-            if subtype in {"breakthrough_boost", "breakthrough_debuff"}:
+            # 支持多种破境丹类型标识
+            if subtype in {"breakthrough_boost", "breakthrough_debuff", "breakthrough"}:
                 pill_name = effect.get("pill_name", "")
                 # 根据丹药名称判断类型
                 if "凝神增益丹" in pill_name:
@@ -778,6 +825,12 @@ class PillManager:
                     group = "zengyi"
                 elif "化神增益丹" in pill_name:
                     group = "zengyi"
+                elif "破虚增益丹" in pill_name:
+                    group = "zengyi"
+                elif "破劫增益丹" in pill_name:
+                    group = "zengyi"
+                elif "焚天逆命" in pill_name:
+                    group = "special"
                 else:
                     group = "other"
                 
@@ -808,7 +861,7 @@ class PillManager:
         effects = player.get_active_pill_effects()
         remaining_effects = [
             effect for effect in effects
-            if effect.get("subtype", "") not in {"breakthrough_boost", "breakthrough_debuff"}
+            if effect.get("subtype", "") not in {"breakthrough_boost", "breakthrough_debuff", "breakthrough"}
         ]
 
         if len(remaining_effects) != len(effects):

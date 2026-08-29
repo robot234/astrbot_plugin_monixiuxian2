@@ -16,13 +16,14 @@ class EquipmentManager:
         self.config_manager = config_manager
         self.storage_ring_manager = storage_ring_manager
 
-    def parse_item_from_name(self, item_name: str, items_data: dict, weapons_data: dict = None) -> Optional[Item]:
+    def parse_item_from_name(self, item_name: str, items_data: dict, weapons_data: dict = None, techniques_data: dict = None) -> Optional[Item]:
         """从物品名称解析为Item对象
 
         Args:
             item_name: 物品名称
             items_data: 物品配置数据字典
             weapons_data: 武器配置数据字典（可选）
+            techniques_data: 功法配置数据字典（可选）
 
         Returns:
             Item对象，如果未找到则返回None
@@ -30,12 +31,34 @@ class EquipmentManager:
         if not item_name or item_name == "":
             return None
 
+        normalized_name = item_name.strip()
+
         # 先从物品配置中查找
-        item_config = items_data.get(item_name)
+        item_config = items_data.get(normalized_name)
+
+        if not item_config:
+            for item_data in items_data.values():
+                if isinstance(item_data, dict) and item_data.get("name") == normalized_name:
+                    item_config = item_data
+                    break
 
         # 如果没找到且提供了武器配置，从武器配置中查找
         if not item_config and weapons_data:
-            item_config = weapons_data.get(item_name)
+            item_config = weapons_data.get(normalized_name)
+            if not item_config:
+                for weapon_data in weapons_data.values():
+                    if isinstance(weapon_data, dict) and weapon_data.get("name") == normalized_name:
+                        item_config = weapon_data
+                        break
+
+        # 如果没找到且提供了功法配置，从功法配置中查找
+        if not item_config and techniques_data:
+            item_config = techniques_data.get(normalized_name)
+            if not item_config:
+                for technique_data in techniques_data.values():
+                    if isinstance(technique_data, dict) and technique_data.get("name") == normalized_name:
+                        item_config = technique_data
+                        break
 
         if not item_config:
             return None
@@ -47,6 +70,13 @@ class EquipmentManager:
         magic_damage = item_config.get("magic_damage", 0)
         magic_defense = item_config.get("magic_defense", 0)
         mental_power = item_config.get("mental_power", 0)
+        
+        # 新增战斗属性
+        speed = item_config.get("speed", 0)
+        critical_rate = item_config.get("critical_rate", 0.0)
+        critical_damage = item_config.get("critical_damage", 0.0)
+        hp_bonus = item_config.get("hp_bonus", 0)
+        mp_bonus = item_config.get("mp_bonus", 0)
 
         # 旧格式兼容：处理 items.json 中的法器（equip_effects 格式）
         if "equip_effects" in item_config:
@@ -57,12 +87,22 @@ class EquipmentManager:
             # 旧格式 defense -> physical_defense
             if "defense" in equip_effects:
                 physical_defense = equip_effects["defense"]
-            # 旧格式 max_hp 可用于体修的 blood_qi 加成
+            # 新增：magic_defense 法防
+            if "magic_defense" in equip_effects:
+                magic_defense = equip_effects["magic_defense"]
+            # 新增：max_hp -> hp_bonus
+            if "max_hp" in equip_effects:
+                hp_bonus = equip_effects["max_hp"]
+            # 新增：speed 速度
+            if "speed" in equip_effects:
+                speed = equip_effects["speed"]
+            # 新增：dodge_rate 闪避率（转换为 critical_rate 的负值或单独处理）
+            # 这里我们将 dodge_rate 存储在 Item 中，需要在战斗时处理
 
         # 旧格式兼容：处理类型映射
         # "法器" + subtype="武器" -> "weapon"
         # "法器" + subtype="防具" -> "armor"
-        # "法器" + subtype="饰品" -> "accessory" (暂不支持装备)
+        # "法器" + subtype="饰品" -> "accessory"
         if item_type == "法器":
             subtype = item_config.get("subtype", "")
             if subtype == "武器":
@@ -74,10 +114,12 @@ class EquipmentManager:
         elif item_type == "功法":
             # 旧格式功法 -> technique
             item_type = "technique"
+        # 新格式功法类型保持不变
+        # "main_technique" 和 "technique" 直接使用
 
         return Item(
-            item_id=item_config.get("id", item_name),
-            name=item_name,
+            item_id=item_config.get("id", normalized_name),
+            name=item_config.get("name", normalized_name),
             item_type=item_type,
             description=item_config.get("description", ""),
             rank=item_config.get("rank", ""),
@@ -89,24 +131,25 @@ class EquipmentManager:
             physical_defense=physical_defense,
             mental_power=mental_power,
             # 新增战斗属性
-            speed=item_config.get("speed", 0),
-            critical_rate=item_config.get("critical_rate", 0.0),
-            critical_damage=item_config.get("critical_damage", 0.0),
-            hp_bonus=item_config.get("hp_bonus", 0),
-            mp_bonus=item_config.get("mp_bonus", 0),
+            speed=speed,
+            critical_rate=critical_rate,
+            critical_damage=critical_damage,
+            hp_bonus=hp_bonus,
+            mp_bonus=mp_bonus,
             # 现有属性继续
             exp_multiplier=item_config.get("exp_multiplier", 0.0),
             spiritual_qi=item_config.get("spiritual_qi", 0),
             blood_qi=item_config.get("blood_qi", 0)
         )
 
-    def get_equipped_items(self, player: Player, items_data: dict, weapons_data: dict = None) -> List[Item]:
+    def get_equipped_items(self, player: Player, items_data: dict, weapons_data: dict = None, techniques_data: dict = None) -> List[Item]:
         """获取玩家所有已装备的物品
 
         Args:
             player: 玩家对象
             items_data: 物品配置数据字典
             weapons_data: 武器配置数据字典（可选）
+            techniques_data: 功法配置数据字典（可选）
 
         Returns:
             已装备物品列表
@@ -115,26 +158,32 @@ class EquipmentManager:
 
         # 武器
         if player.weapon:
-            item = self.parse_item_from_name(player.weapon, items_data, weapons_data)
+            item = self.parse_item_from_name(player.weapon, items_data, weapons_data, techniques_data)
             if item:
                 equipped.append(item)
 
         # 防具
         if player.armor:
-            item = self.parse_item_from_name(player.armor, items_data, weapons_data)
+            item = self.parse_item_from_name(player.armor, items_data, weapons_data, techniques_data)
+            if item:
+                equipped.append(item)
+
+        # 饰品
+        if player.accessory:
+            item = self.parse_item_from_name(player.accessory, items_data, weapons_data, techniques_data)
             if item:
                 equipped.append(item)
 
         # 主修心法
         if player.main_technique:
-            item = self.parse_item_from_name(player.main_technique, items_data, weapons_data)
+            item = self.parse_item_from_name(player.main_technique, items_data, weapons_data, techniques_data)
             if item:
                 equipped.append(item)
 
         # 功法列表
         techniques_list = player.get_techniques_list()
         for technique_name in techniques_list:
-            item = self.parse_item_from_name(technique_name, items_data, weapons_data)
+            item = self.parse_item_from_name(technique_name, items_data, weapons_data, techniques_data)
             if item:
                 equipped.append(item)
 
@@ -215,6 +264,16 @@ class EquipmentManager:
             else:
                 return True, f"已装备防具【{item.name}】（{item.rank}）"
 
+        elif item.item_type == "accessory":
+            old_item = player.accessory
+            player.accessory = item.name
+            await self.db.update_player(player)
+            if old_item:
+                storage_msg = await self._store_old_equipment(player, old_item)
+                return True, f"已将饰品【{old_item}】替换为【{item.name}】（{item.rank}）{storage_msg}"
+            else:
+                return True, f"已装备饰品【{item.name}】（{item.rank}）"
+
         elif item.item_type == "main_technique":
             old_item = player.main_technique
             player.main_technique = item.name
@@ -273,6 +332,14 @@ class EquipmentManager:
             await self.db.update_player(player)
             return True, f"已卸下防具【{item_name}】"
 
+        elif slot_or_name in ["饰品", "配饰", "法宝", "accessory"]:
+            if not player.accessory:
+                return False, "未装备饰品"
+            item_name = player.accessory
+            player.accessory = ""
+            await self.db.update_player(player)
+            return True, f"已卸下饰品【{item_name}】"
+
         elif slot_or_name in ["主修心法", "心法", "main_technique"]:
             if not player.main_technique:
                 return False, "未装备主修心法"
@@ -309,3 +376,76 @@ class EquipmentManager:
             return f"\n旧装备【{item_name}】已存入储物戒"
         else:
             return f"\n⚠️ 旧装备【{item_name}】存入储物戒失败：{msg}"
+
+    def get_equipment_stats_display(self, player: Player, items_data: dict, weapons_data: dict = None, techniques_data: dict = None) -> str:
+        """获取装备属性展示
+
+        Args:
+            player: 玩家对象
+            items_data: 物品配置数据字典
+            weapons_data: 武器配置数据字典（可选）
+            techniques_data: 功法配置数据字典（可选）
+
+        Returns:
+            装备属性展示文本
+        """
+        lines = ["=== 装备栏 ==="]
+        
+        # 武器
+        if player.weapon:
+            item = self.parse_item_from_name(player.weapon, items_data, weapons_data, techniques_data)
+            if item:
+                lines.append(f"武器: {item.name}（{item.rank}）")
+                lines.append(f"  {item.get_attribute_display()}")
+            else:
+                lines.append(f"武器: {player.weapon}")
+        else:
+            lines.append("武器: 无")
+        
+        # 防具
+        if player.armor:
+            item = self.parse_item_from_name(player.armor, items_data, weapons_data, techniques_data)
+            if item:
+                lines.append(f"防具: {item.name}（{item.rank}）")
+                lines.append(f"  {item.get_attribute_display()}")
+            else:
+                lines.append(f"防具: {player.armor}")
+        else:
+            lines.append("防具: 无")
+        
+        # 主修心法
+        if player.main_technique:
+            item = self.parse_item_from_name(player.main_technique, items_data, weapons_data, techniques_data)
+            if item:
+                lines.append(f"心法: {item.name}（{item.rank}）")
+                lines.append(f"  {item.get_attribute_display()}")
+            else:
+                lines.append(f"心法: {player.main_technique}")
+        else:
+            lines.append("心法: 无")
+
+        # 饰品
+        if player.accessory:
+            item = self.parse_item_from_name(player.accessory, items_data, weapons_data, techniques_data)
+            if item:
+                lines.append(f"饰品: {item.name}（{item.rank}）")
+                lines.append(f"  {item.get_attribute_display()}")
+            else:
+                lines.append(f"饰品: {player.accessory}")
+        else:
+            lines.append("饰品: 无")
+        
+        # 功法列表
+        techniques_list = player.get_techniques_list()
+        if techniques_list:
+            lines.append(f"功法: ({len(techniques_list)}/3)")
+            for tech_name in techniques_list:
+                item = self.parse_item_from_name(tech_name, items_data, weapons_data, techniques_data)
+                if item:
+                    lines.append(f"  - {item.name}（{item.rank}）: {item.get_attribute_display()}")
+                else:
+                    lines.append(f"  - {tech_name}")
+        else:
+            lines.append("功法: 无 (0/3)")
+        
+        return "\n".join(lines)

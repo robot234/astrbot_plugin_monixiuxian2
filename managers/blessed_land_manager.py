@@ -10,12 +10,47 @@ __all__ = ["BlessedLandManager"]
 
 # 洞天配置
 BLESSED_LANDS = {
-    1: {"name": "小洞天", "price": 10000, "exp_bonus": 0.05, "gold_per_hour": 100, "max_level": 5, "max_exp_per_hour": 5000},
-    2: {"name": "中洞天", "price": 30000, "exp_bonus": 0.10, "gold_per_hour": 500, "max_level": 10, "max_exp_per_hour": 15000},
-    3: {"name": "大洞天", "price": 80000, "exp_bonus": 0.20, "gold_per_hour": 2000, "max_level": 15, "max_exp_per_hour": 30000},
-    4: {"name": "福地", "price": 200000, "exp_bonus": 0.30, "gold_per_hour": 5000, "max_level": 20, "max_exp_per_hour": 50000},
-    5: {"name": "洞天福地", "price": 500000, "exp_bonus": 0.50, "gold_per_hour": 10000, "max_level": 30, "max_exp_per_hour": 100000},
+    1: {"name": "小洞天", "price": 10000, "exp_bonus": 0.05, "gold_per_hour": 100, "max_level": 5, "max_exp_per_hour": 5000, "required_level_index": 0},
+    2: {"name": "中洞天", "price": 30000, "exp_bonus": 0.10, "gold_per_hour": 500, "max_level": 10, "max_exp_per_hour": 15000, "required_level_index": 10},
+    3: {"name": "大洞天", "price": 80000, "exp_bonus": 0.20, "gold_per_hour": 2000, "max_level": 15, "max_exp_per_hour": 30000, "required_level_index": 13},
+    4: {"name": "福地", "price": 200000, "exp_bonus": 0.30, "gold_per_hour": 5000, "max_level": 20, "max_exp_per_hour": 50000, "required_level_index": 16},
+    5: {"name": "洞天福地", "price": 500000, "exp_bonus": 0.50, "gold_per_hour": 10000, "max_level": 30, "max_exp_per_hour": 100000, "required_level_index": 19},
 }
+
+# 境界名称映射（用于显示）
+LEVEL_NAMES = {
+    0: "炼气期",
+    10: "筑基期",
+    13: "金丹期",
+    16: "元婴期",
+    19: "化神期",
+    22: "炼虚期",
+    25: "合体期",
+    28: "大乘期",
+    31: "渡劫期",
+}
+
+
+def get_realm_name(level_index: int) -> str:
+    """根据境界索引获取大境界名称"""
+    if level_index >= 31:
+        return "渡劫期"
+    elif level_index >= 28:
+        return "大乘期"
+    elif level_index >= 25:
+        return "合体期"
+    elif level_index >= 22:
+        return "炼虚期"
+    elif level_index >= 19:
+        return "化神期"
+    elif level_index >= 16:
+        return "元婴期"
+    elif level_index >= 13:
+        return "金丹期"
+    elif level_index >= 10:
+        return "筑基期"
+    else:
+        return "炼气期"
 
 
 class BlessedLandManager:
@@ -35,6 +70,14 @@ class BlessedLandManager:
                 return dict(row)
             return None
     
+    def get_available_lands_for_player(self, player: Player) -> Dict[int, dict]:
+        """获取玩家可购买的洞天列表"""
+        available = {}
+        for land_type, config in BLESSED_LANDS.items():
+            if player.level_index >= config["required_level_index"]:
+                available[land_type] = config
+        return available
+    
     async def purchase_blessed_land(self, player: Player, land_type: int) -> Tuple[bool, str]:
         """购买洞天"""
         # 限制只能购买小洞天
@@ -44,12 +87,20 @@ class BlessedLandManager:
         if land_type not in BLESSED_LANDS:
             return False, "❌ 无效的洞天类型。"
         
+        land_config = BLESSED_LANDS[land_type]
+        
+        # 检查境界要求
+        required_level = land_config["required_level_index"]
+        if player.level_index < required_level:
+            required_realm = get_realm_name(required_level)
+            current_realm = get_realm_name(player.level_index)
+            return False, f"❌ 购买{land_config['name']}需要达到【{required_realm}】境界！\n当前境界：{current_realm}"
+        
         # 检查是否已有洞天
         existing = await self.get_user_blessed_land(player.user_id)
         if existing:
             return False, f"❌ 你已拥有【{existing['land_name']}】，请先升级而非重新购买。"
         
-        land_config = BLESSED_LANDS[land_type]
         price = land_config["price"]
         
         if player.gold < price:
@@ -200,13 +251,23 @@ class BlessedLandManager:
             else:
                 return False, "❌ 你的洞天已达最高等级，无法继续进阶。"
         
+        # 检查境界要求
+        target_config = BLESSED_LANDS[target_type]
+        required_level = target_config["required_level_index"]
+        if player.level_index < required_level:
+            required_realm = get_realm_name(required_level)
+            current_realm = get_realm_name(player.level_index)
+            return False, (
+                f"❌ 进阶到{target_config['name']}需要达到【{required_realm}】境界！\n"
+                f"当前境界：{current_realm}"
+            )
+        
         # 检查现有洞天是否满级
         current_config = BLESSED_LANDS[current_type]
         if existing["level"] < current_config["max_level"]:
             return False, f"❌ 你的{existing['land_name']}需要达到满级 {current_config['max_level']} 才能进阶。"
         
         # 计算进阶成本（新洞天价格 × 0.3）
-        target_config = BLESSED_LANDS[target_type]
         advance_cost = int(target_config["price"])
         
         if player.gold < advance_cost:
@@ -245,22 +306,31 @@ class BlessedLandManager:
             f"花费：{advance_cost:,} 灵石"
         )
     
-    async def get_blessed_land_info(self, user_id: str) -> str:
+    async def get_blessed_land_info(self, user_id: str, player: Player = None) -> str:
         """获取洞天信息展示"""
         land = await self.get_user_blessed_land(user_id)
         if not land:
-            return (
-                "🏔️ 洞天福地\n"
-                "━━━━━━━━━━━━━━━\n"
-                "你还没有洞天！\n\n"
-                "可购买的洞天：\n"
-                "  1. 小洞天 - 10,000灵石\n"
-                "  2. 中洞天 - 50,000灵石\n"
-                "  3. 大洞天 - 200,000灵石\n"
-                "  4. 福地 - 500,000灵石\n"
-                "  5. 洞天福地 - 1,000,000灵石\n\n"
-                "💡 使用 /购买洞天 <编号>"
-            )
+            # 显示可购买的洞天列表（根据境界）
+            lines = [
+                "🏔️ 洞天福地",
+                "━━━━━━━━━━━━━━━",
+                "你还没有洞天！\n",
+                "可购买的洞天：",
+            ]
+            
+            for land_type, config in BLESSED_LANDS.items():
+                required_realm = get_realm_name(config["required_level_index"])
+                can_buy = player and player.level_index >= config["required_level_index"]
+                status = "✅" if can_buy else f"🔒{required_realm}"
+                lines.append(f"  {land_type}. {config['name']} - {config['price']:,}灵石 {status}")
+            
+            lines.extend([
+                "",
+                "💡 使用 /购买洞天 1 购买小洞天",
+                "⚠️ 初始只能购买小洞天，通过进阶提升"
+            ])
+            
+            return "\n".join(lines)
         
         now = int(time.time())
         hours_since = (now - land["last_collect_time"]) / 3600
@@ -269,7 +339,18 @@ class BlessedLandManager:
         # 检查是否可以进阶
         current_config = BLESSED_LANDS[land["land_type"]]
         can_advance = land["level"] >= current_config["max_level"] and land["land_type"] < 5
-        advance_hint = "\n💡 已达满级，可使用 /进阶洞天 <类型> 提升洞天品质" if can_advance else ""
+        
+        advance_hint = ""
+        if can_advance:
+            next_type = land["land_type"] + 1
+            if next_type in BLESSED_LANDS:
+                next_config = BLESSED_LANDS[next_type]
+                required_level = next_config["required_level_index"]
+                if player and player.level_index >= required_level:
+                    advance_hint = f"\n💡 已达满级，可使用 /进阶洞天 {next_type} 提升到{next_config['name']}"
+                else:
+                    required_realm = get_realm_name(required_level)
+                    advance_hint = f"\n🔒 进阶{next_config['name']}需要【{required_realm}】境界"
         
         return (
             f"🏔️ {land['land_name']} (Lv.{land['level']})\n"

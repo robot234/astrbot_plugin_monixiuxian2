@@ -604,8 +604,47 @@ class DatabaseExtended:
     
     # ===== 赠予请求系统 CRUD =====
     
+    async def ensure_pending_gifts_table(self):
+        """确保赠予请求表存在并包含source_type字段"""
+        # 检查表是否存在
+        async with self.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='pending_gifts'"
+        ) as cursor:
+            table_exists = await cursor.fetchone()
+        
+        if not table_exists:
+            # 创建新表（包含source_type字段）
+            await self.conn.execute("""
+                CREATE TABLE pending_gifts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    receiver_id TEXT NOT NULL,
+                    sender_id TEXT NOT NULL,
+                    sender_name TEXT NOT NULL,
+                    item_name TEXT NOT NULL,
+                    count INTEGER NOT NULL DEFAULT 1,
+                    source_type TEXT NOT NULL DEFAULT 'storage',
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                )
+            """)
+            await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
+            await self.conn.commit()
+        else:
+            # 检查是否有source_type字段
+            async with self.conn.execute("PRAGMA table_info(pending_gifts)") as cursor:
+                columns = await cursor.fetchall()
+                column_names = [col[1] for col in columns]
+                
+            if 'source_type' not in column_names:
+                # 添加source_type字段
+                await self.conn.execute(
+                    "ALTER TABLE pending_gifts ADD COLUMN source_type TEXT NOT NULL DEFAULT 'storage'"
+                )
+                await self.conn.commit()
+    
     async def create_pending_gift(self, receiver_id: str, sender_id: str, sender_name: str,
-                                   item_name: str, count: int, expires_hours: int = 24) -> int:
+                                   item_name: str, count: int, expires_hours: int = 24,
+                                   source_type: str = "storage") -> int:
         """创建赠予请求
         
         Args:
@@ -615,21 +654,26 @@ class DatabaseExtended:
             item_name: 物品名称
             count: 物品数量
             expires_hours: 过期时间（小时），默认24小时
+            source_type: 物品来源类型，"storage"=储物戒，"pill"=丹药背包
             
         Returns:
             新创建的赠予请求ID
         """
         import time
+        
+        # 确保表结构正确
+        await self.ensure_pending_gifts_table()
+        
         now = int(time.time())
         expires_at = now + expires_hours * 3600
         
         await self.conn.execute(
             """
             INSERT INTO pending_gifts (
-                receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                receiver_id, sender_id, sender_name, item_name, count, source_type, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (receiver_id, sender_id, sender_name, item_name, count, now, expires_at)
+            (receiver_id, sender_id, sender_name, item_name, count, source_type, now, expires_at)
         )
         await self.conn.commit()
         
@@ -640,6 +684,10 @@ class DatabaseExtended:
     async def get_pending_gift(self, receiver_id: str) -> Optional[dict]:
         """获取接收者的待处理赠予请求（最新的一个）"""
         import time
+        
+        # 确保表结构正确
+        await self.ensure_pending_gifts_table()
+        
         now = int(time.time())
         
         # 先清理过期的请求
@@ -647,7 +695,7 @@ class DatabaseExtended:
         
         async with self.conn.execute(
             """
-            SELECT id, receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
+            SELECT id, receiver_id, sender_id, sender_name, item_name, count, source_type, created_at, expires_at
             FROM pending_gifts 
             WHERE receiver_id = ? AND expires_at > ?
             ORDER BY created_at DESC 
@@ -664,19 +712,24 @@ class DatabaseExtended:
                     "sender_name": row[3],
                     "item_name": row[4],
                     "count": row[5],
-                    "created_at": row[6],
-                    "expires_at": row[7]
+                    "source_type": row[6],
+                    "created_at": row[7],
+                    "expires_at": row[8]
                 }
             return None
     
     async def get_all_pending_gifts(self, receiver_id: str) -> List[dict]:
         """获取接收者的所有待处理赠予请求"""
         import time
+        
+        # 确保表结构正确
+        await self.ensure_pending_gifts_table()
+        
         now = int(time.time())
         
         async with self.conn.execute(
             """
-            SELECT id, receiver_id, sender_id, sender_name, item_name, count, created_at, expires_at
+            SELECT id, receiver_id, sender_id, sender_name, item_name, count, source_type, created_at, expires_at
             FROM pending_gifts 
             WHERE receiver_id = ? AND expires_at > ?
             ORDER BY created_at DESC
@@ -692,8 +745,9 @@ class DatabaseExtended:
                     "sender_name": row[3],
                     "item_name": row[4],
                     "count": row[5],
-                    "created_at": row[6],
-                    "expires_at": row[7]
+                    "source_type": row[6],
+                    "created_at": row[7],
+                    "expires_at": row[8]
                 }
                 for row in rows
             ]
@@ -843,3 +897,39 @@ class DatabaseExtended:
                     "balance": row[1]
                 })
         return rankings
+    
+    # ===== Phase 4: 玩家贷款等级系统 CRUD =====
+    
+    async def ensure_player_loan_tier_table(self):
+        """确保玩家贷款等级表存在"""
+        await self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS player_loan_tiers (
+                user_id TEXT PRIMARY KEY,
+                loan_tier INTEGER NOT NULL DEFAULT 1,
+                updated_at INTEGER DEFAULT 0
+            )
+        """)
+        await self.conn.commit()
+    
+    async def get_player_loan_tier(self, user_id: str) -> Optional[int]:
+        """获取玩家的贷款等级（通过挑战获得）"""
+        await self.ensure_player_loan_tier_table()
+        async with self.conn.execute(
+            "SELECT loan_tier FROM player_loan_tiers WHERE user_id = ?",
+            (user_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+    
+    async def set_player_loan_tier(self, user_id: str, tier: int):
+        """设置玩家的贷款等级"""
+        import time
+        await self.ensure_player_loan_tier_table()
+        await self.conn.execute(
+            """
+            INSERT INTO player_loan_tiers (user_id, loan_tier, updated_at) VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET loan_tier = ?, updated_at = ?
+            """,
+            (user_id, tier, int(time.time()), tier, int(time.time()))
+        )
+        await self.conn.commit()

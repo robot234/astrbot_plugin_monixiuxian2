@@ -3,11 +3,59 @@
 import random
 import time
 import json
+from collections.abc import Mapping
 from typing import List, Dict, Optional, Tuple
 
 from astrbot.api import AstrBotConfig, logger
 from ..config_manager import ConfigManager
 from ..models import Item
+
+
+def get_shop_config_value(config, key, fallback):
+    """Read a shop setting from the root config, then its VALUES mapping."""
+    if isinstance(config, Mapping):
+        if key in config:
+            return config[key]
+        values = config.get("VALUES")
+    else:
+        values = None
+        try:
+            if key in config:
+                return config[key]
+        except (TypeError, AttributeError):
+            pass
+        try:
+            values = config.get("VALUES")
+        except (TypeError, AttributeError):
+            pass
+    if isinstance(values, Mapping) and key in values:
+        return values[key]
+    return fallback
+
+
+def get_treasure_pavilion_counts(config):
+    """Return deterministic skill, technique, and material pavilion counts."""
+    total = get_shop_config_value(config, "PAVILION_TREASURE_COUNT", 19)
+    try:
+        total = max(0, int(total))
+    except (TypeError, ValueError):
+        total = 19
+
+    # Keep the legacy 8:6:5 proportions; assign the remainder to material.
+    skill_count = (total * 8 + 9) // 19
+    technique_count = (total * 6 + 9) // 19
+    counts = [skill_count, technique_count, total - skill_count - technique_count]
+
+    defaults = dict(zip(("skill", "technique", "material"), counts))
+    return {
+        category: get_shop_config_value(config, key, defaults[category])
+        for category, key in (
+            ("skill", "TREASURE_PAVILION_SKILL_COUNT"),
+            ("technique", "TREASURE_PAVILION_TECHNIQUE_COUNT"),
+            ("material", "TREASURE_PAVILION_MATERIAL_COUNT"),
+        )
+    }
+
 
 class ShopManager:
     """商店管理器，负责商店物品生成、刷新和购买"""
@@ -48,13 +96,15 @@ class ShopManager:
                     'data': weapon
                 })
 
-        # 添加物品（防具、心法、功法）
+        # 添加物品（防具、饰品、功法、丹药、材料等）
         for item in self.config_manager.items_data.values():
             if item.get('shop_weight', 0) > 0 and item.get('price', 0) > 0:
+                # 映射物品类型
+                item_type = self._map_legacy_item_type(item)
                 all_items.append({
                     'id': item.get('id', item['name']),
                     'name': item['name'],
-                    'type': item['type'],
+                    'type': item_type,
                     'price': item['price'],
                     'weight': item['shop_weight'],
                     'rank': item.get('rank', '凡品'),
@@ -148,7 +198,7 @@ class ShopManager:
             库存数量（最小为1）
         """
         # 获取库存计算基数，默认100
-        stock_divisor = self.config.get("SHOP_STOCK_DIVISOR", 100)
+        stock_divisor = get_shop_config_value(self.config, "SHOP_STOCK_DIVISOR", 100)
 
         # 库存 = 权重 / 基数，向上取整，最小为1
         stock = max(1, (weight + stock_divisor - 1) // stock_divisor)
@@ -197,8 +247,8 @@ class ShopManager:
         selected_items = self._weighted_random_choice(all_items, count)
 
         # 获取折扣配置
-        discount_min = self.config.get("SHOP_DISCOUNT_MIN", 0.8)
-        discount_max = self.config.get("SHOP_DISCOUNT_MAX", 1.2)
+        discount_min = get_shop_config_value(self.config, "SHOP_DISCOUNT_MIN", 0.8)
+        discount_max = get_shop_config_value(self.config, "SHOP_DISCOUNT_MAX", 1.2)
 
         # 生成商店物品
         shop_items = []
@@ -238,8 +288,8 @@ class ShopManager:
         selected = self._weighted_random_choice(
             [{'weight': i.get('data', {}).get('shop_weight', 100), **i} for i in base_items], count
         )
-        discount_min = self.config.get("SHOP_DISCOUNT_MIN", 0.8)
-        discount_max = self.config.get("SHOP_DISCOUNT_MAX", 1.2)
+        discount_min = get_shop_config_value(self.config, "SHOP_DISCOUNT_MIN", 0.8)
+        discount_max = get_shop_config_value(self.config, "SHOP_DISCOUNT_MAX", 1.2)
         result = []
         for item in selected:
             discount = random.uniform(discount_min, discount_max)
@@ -270,8 +320,112 @@ class ShopManager:
         all_weapons = []
         for weapon in self.config_manager.weapons_data.values():
             if weapon.get('price', 0) > 0:
-                all_weapons.append({'name': weapon['name'], 'type': 'weapon', 'price': weapon['price'], 'rank': weapon.get('rank', '凡品'), 'data': weapon})
+                all_weapons.append({
+                    'name': weapon['name'],
+                    'type': 'weapon',
+                    'price': weapon['price'],
+                    'rank': weapon.get('rank', '凡品'),
+                    'weight': weapon.get('shop_weight', 100),
+                    'data': weapon
+                })
         return all_weapons
+
+    def _pick_weighted_items(self, items: List[Dict], count: int) -> List[Dict]:
+        """从候选池中按权重抽取物品"""
+        if count <= 0 or not items:
+            return []
+
+        weighted_items = [
+            {'weight': item.get('weight', item.get('data', {}).get('shop_weight', 100)), **item}
+            for item in items
+        ]
+        return self._weighted_random_choice(weighted_items, min(count, len(weighted_items)))
+
+    def get_equipment_for_display(self, count: int) -> List[Dict]:
+        """获取器阁展示装备，包含武器、防具与饰品。"""
+        weapons = self.get_weapons_for_display(count)
+        armors = []
+        accessories = []
+
+        for item in self.config_manager.items_data.values():
+            if item.get('price', 0) <= 0:
+                continue
+
+            item_type = self._map_legacy_item_type(item)
+            if item_type not in ['armor', 'accessory']:
+                continue
+
+            equipment_item = {
+                'name': item['name'],
+                'type': item_type,
+                'price': item['price'],
+                'rank': item.get('rank', '凡品'),
+                'weight': item.get('shop_weight', 100),
+                'data': item
+            }
+
+            if item_type == 'armor':
+                armors.append(equipment_item)
+            else:
+                accessories.append(equipment_item)
+
+        if count <= 0:
+            return []
+
+        weapon_count = max(1, round(count * 0.4)) if weapons else 0
+        armor_count = max(1, round(count * 0.35)) if armors else 0
+        accessory_count = max(1, count - weapon_count - armor_count) if accessories else 0
+
+        total_count = weapon_count + armor_count + accessory_count
+        while total_count > count:
+            if weapon_count >= armor_count and weapon_count > 1:
+                weapon_count -= 1
+            elif armor_count >= accessory_count and armor_count > 1:
+                armor_count -= 1
+            elif accessory_count > 1:
+                accessory_count -= 1
+            total_count = weapon_count + armor_count + accessory_count
+
+        while total_count < count:
+            if accessories:
+                accessory_count += 1
+            elif armors:
+                armor_count += 1
+            elif weapons:
+                weapon_count += 1
+            total_count = weapon_count + armor_count + accessory_count
+
+        selected = []
+        selected.extend(self._pick_weighted_items(weapons, weapon_count))
+        selected.extend(self._pick_weighted_items(armors, armor_count))
+        selected.extend(self._pick_weighted_items(accessories, accessory_count))
+
+        if len(selected) < count:
+            selected_names = {item['name'] for item in selected}
+            remaining_pool = [
+                item for item in weapons + armors + accessories
+                if item['name'] not in selected_names
+            ]
+            selected.extend(self._pick_weighted_items(remaining_pool, count - len(selected)))
+
+        random.shuffle(selected)
+        return selected[:count]
+
+    def get_armors_for_display(self, count: int) -> List[Dict]:
+        """获取防具列表用于防具阁展示"""
+        all_armors = []
+        for item in self.config_manager.items_data.values():
+            if item.get('price', 0) > 0:
+                # 检查是否为防具类型
+                if item.get('type') == '法器' and item.get('subtype') == '防具':
+                    all_armors.append({
+                        'name': item['name'],
+                        'type': 'armor',
+                        'price': item['price'],
+                        'rank': item.get('rank', '凡品'),
+                        'data': item
+                    })
+        return all_armors
 
     def get_all_items_for_display(self, count: int) -> List[Dict]:
         """获取所有物品用于百宝阁展示"""
@@ -397,18 +551,38 @@ class ShopManager:
         item_type = item.get('type', '')
         effects = []
         
-        # 武器/装备属性
+        # 武器/装备属性 - 优先从 equip_effects 获取
         if item_type in ['weapon', 'armor', 'accessory']:
-            if data.get('physical_damage', 0) > 0:
-                effects.append(f"物伤+{data['physical_damage']}")
-            if data.get('magic_damage', 0) > 0:
-                effects.append(f"法伤+{data['magic_damage']}")
-            if data.get('physical_defense', 0) > 0:
-                effects.append(f"物防+{data['physical_defense']}")
-            if data.get('magic_defense', 0) > 0:
-                effects.append(f"法防+{data['magic_defense']}")
-            if data.get('mental_power', 0) > 0:
-                effects.append(f"精神力+{data['mental_power']}")
+            equip_effects = data.get('equip_effects', {})
+            
+            # 从 equip_effects 获取属性
+            if equip_effects:
+                if equip_effects.get('attack', 0) > 0:
+                    effects.append(f"物伤+{equip_effects['attack']}")
+                if equip_effects.get('defense', 0) > 0:
+                    effects.append(f"物防+{equip_effects['defense']}")
+                if equip_effects.get('magic_defense', 0) > 0:
+                    effects.append(f"法防+{equip_effects['magic_defense']}")
+                if equip_effects.get('max_hp', 0) > 0:
+                    effects.append(f"HP+{equip_effects['max_hp']}")
+                if equip_effects.get('speed', 0) != 0:
+                    speed_val = equip_effects['speed']
+                    effects.append(f"速度{'+' if speed_val > 0 else ''}{speed_val}")
+                if equip_effects.get('dodge_rate', 0) > 0:
+                    effects.append(f"闪避+{int(equip_effects['dodge_rate']*100)}%")
+            
+            # 兼容直接属性格式
+            if not effects:
+                if data.get('physical_damage', 0) > 0:
+                    effects.append(f"物伤+{data['physical_damage']}")
+                if data.get('magic_damage', 0) > 0:
+                    effects.append(f"法伤+{data['magic_damage']}")
+                if data.get('physical_defense', 0) > 0:
+                    effects.append(f"物防+{data['physical_defense']}")
+                if data.get('magic_defense', 0) > 0:
+                    effects.append(f"法防+{data['magic_defense']}")
+                if data.get('mental_power', 0) > 0:
+                    effects.append(f"精神力+{data['mental_power']}")
         
         # 功法属性
         elif item_type in ['main_technique', 'technique', '功法']:
@@ -480,16 +654,37 @@ class ShopManager:
         # 武器/防具/饰品属性
         if item_type in ['weapon', 'armor', 'accessory']:
             attrs = []
-            if data.get('magic_damage', 0) > 0:
-                attrs.append(f"法伤+{data['magic_damage']}")
-            if data.get('physical_damage', 0) > 0:
-                attrs.append(f"物伤+{data['physical_damage']}")
-            if data.get('magic_defense', 0) > 0:
-                attrs.append(f"法防+{data['magic_defense']}")
-            if data.get('physical_defense', 0) > 0:
-                attrs.append(f"物防+{data['physical_defense']}")
-            if data.get('mental_power', 0) > 0:
-                attrs.append(f"精神力+{data['mental_power']}")
+            equip_effects = data.get('equip_effects', {})
+            
+            # 优先从 equip_effects 获取
+            if equip_effects:
+                if equip_effects.get('attack', 0) > 0:
+                    attrs.append(f"物伤+{equip_effects['attack']}")
+                if equip_effects.get('defense', 0) > 0:
+                    attrs.append(f"物防+{equip_effects['defense']}")
+                if equip_effects.get('magic_defense', 0) > 0:
+                    attrs.append(f"法防+{equip_effects['magic_defense']}")
+                if equip_effects.get('max_hp', 0) > 0:
+                    attrs.append(f"HP+{equip_effects['max_hp']}")
+                if equip_effects.get('speed', 0) != 0:
+                    speed_val = equip_effects['speed']
+                    attrs.append(f"速度{'+' if speed_val > 0 else ''}{speed_val}")
+                if equip_effects.get('dodge_rate', 0) > 0:
+                    attrs.append(f"闪避+{int(equip_effects['dodge_rate']*100)}%")
+            
+            # 兼容直接属性格式
+            if not attrs:
+                if data.get('magic_damage', 0) > 0:
+                    attrs.append(f"法伤+{data['magic_damage']}")
+                if data.get('physical_damage', 0) > 0:
+                    attrs.append(f"物伤+{data['physical_damage']}")
+                if data.get('magic_defense', 0) > 0:
+                    attrs.append(f"法防+{data['magic_defense']}")
+                if data.get('physical_defense', 0) > 0:
+                    attrs.append(f"物防+{data['physical_defense']}")
+                if data.get('mental_power', 0) > 0:
+                    attrs.append(f"精神力+{data['mental_power']}")
+            
             if attrs:
                 details.append(f"属性: {', '.join(attrs)}")
             if 'required_level_index' in data:

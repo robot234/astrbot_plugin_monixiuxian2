@@ -588,7 +588,8 @@
         "description": "由玄铁编织的内甲，能提供基础的防护。",
         "price": 800,
         "equip_effects": {
-            "defense": 10
+            "defense": 10,
+            "magic_defense": 5
         },
         "shop_weight": 1000
     },
@@ -613,6 +614,7 @@
         "price": 4000,
         "equip_effects": {
             "defense": 22,
+            "magic_defense": 18,
             "max_hp": 50
         },
         "shop_weight": 100
@@ -663,6 +665,7 @@
         "price": 750000,
         "equip_effects": {
             "defense": 300,
+            "magic_defense": 150,
             "max_hp": 200
         },
         "shop_weight": 100
@@ -692,84 +695,64 @@
         },
         "shop_weight": 20
     },
-    "4001": {
-        "name": "长春功残篇",
-        "type": "功法",
-        "rank": "凡品",
-        "description": "一部基础的吐纳法门，修炼后可延年益寿。",
-        "price": 1000,
-        "shop_weight": 1000
+    "3011": {
+        "name": "灵纹道袍",
+        "type": "法器",
+        "subtype": "防具",
+        "rank": "珍品",
+        "description": "绣有灵纹的道袍，能抵御法术攻击。",
+        "price": 5000,
+        "equip_effects": {
+            "defense": 15,
+            "magic_defense": 30,
+            "max_hp": 30
+        },
+        "shop_weight": 100
     },
-    "4002": {
-        "name": "焚天诀上卷",
-        "type": "功法",
+    "3012": {
+        "name": "金刚护体甲",
+        "type": "法器",
+        "subtype": "防具",
         "rank": "圣品",
-        "description": "传说中可焚尽万物的无上功法，此为上卷。",
-        "price": 888888,
+        "description": "以龙骨髓炼制的护甲，刀枪不入，法术难侵。",
+        "price": 680000,
+        "equip_effects": {
+            "defense": 280,
+            "magic_defense": 200,
+            "max_hp": 150,
+            "speed": -5
+        },
         "shop_weight": 100
     },
-    "4003": {
-        "name": "他化自在大法",
-        "type": "功法",
+    "3013": {
+        "name": "混元战甲",
+        "type": "法器",
+        "subtype": "防具",
         "rank": "帝品",
-        "description": "无上秘法，可演化万物，神秘莫测。",
-        "price": 9999999,
+        "description": "混元祖师遗留的战甲，蕴含混元之力，攻守兼备。",
+        "price": 8000000,
+        "equip_effects": {
+            "defense": 600,
+            "magic_defense": 500,
+            "max_hp": 500,
+            "attack": 100
+        },
         "shop_weight": 20
     },
-    "4004": {
-        "name": "不动明王经",
-        "type": "功法",
-        "rank": "珍品",
-        "description": "佛门无上炼体功法，修炼后肉身坚不可摧。",
-        "price": 10000,
-        "shop_weight": 100
-    },
-    "4005": {
-        "name": "御风诀",
-        "type": "功法",
-        "rank": "凡品",
-        "description": "修炼后身轻如燕，提升移动速度（暂无实际效果）。",
-        "price": 1200,
-        "shop_weight": 1000
-    },
-    "4006": {
-        "name": "龟息功",
-        "type": "功法",
-        "rank": "凡品",
-        "description": "模拟玄龟呼吸，修炼后气息绵长，提升耐力（暂无实际效果）。",
-        "price": 900,
-        "shop_weight": 1000
-    },
-    "4007": {
-        "name": "北冥神功",
-        "type": "功法",
-        "rank": "珍品",
-        "description": "能吸取他人修为化为己用，霸道无比（暂无实际效果）。",
-        "price": 25000,
-        "shop_weight": 100
-    },
-    "4008": {
-        "name": "九阳神功",
-        "type": "功法",
-        "rank": "珍品",
-        "description": "至刚至阳的内功心法，百毒不侵。",
-        "price": 22000,
-        "shop_weight": 100
-    },
-    "4009": {
-        "name": "道经",
-        "type": "功法",
-        "rank": "帝品",
-        "description": "阐述了天地至理的无上经文，为万法之源。",
-        "price": 7777777,
-        "shop_weight": 20
-    },
-    "4010": {
-        "name": "吞天魔功",
-        "type": "功法",
-        "rank": "帝品",
-        "description": "魔道无上功法，吞噬万物本源，禁忌的存在。",
-        "price": 6666666,
-        "shop_weight": 20
+    "3014": {
+        "name": "天蚕宝衣",
+        "type": "法器",
+        "subtype": "防具",
+        "rank": "神品",
+        "description": "以天蚕丝织就的宝衣，轻若无物却坚逾金刚，可抵御一切攻击。",
+        "price": 15000000,
+        "equip_effects": {
+            "defense": 1000,
+            "magic_defense": 1000,
+            "max_hp": 1000,
+            "speed": 50,
+            "dodge_rate": 0.05
+        },
+        "shop_weight": 10
     }
 }

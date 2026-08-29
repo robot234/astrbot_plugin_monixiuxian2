@@ -134,6 +134,154 @@ class CombatHandlers:
             player.mp = player.max_mp  # MP恢复满
             await self.db.update_player(player)
 
+    def _generate_hp_bar(self, percent: int, length: int = 10) -> str:
+        """生成HP条
+        
+        Args:
+            percent: HP百分比 (0-100)
+            length: HP条长度
+            
+        Returns:
+            HP条字符串
+        """
+        filled = int(length * percent / 100)
+        empty = length - filled
+        
+        if percent > 60:
+            bar_char = "█"
+        elif percent > 30:
+            bar_char = "▓"
+        else:
+            bar_char = "░"
+        
+        return f"[{bar_char * filled}{'░' * empty}]"
+
+    def _generate_detailed_battle_report(
+        self, 
+        battle_result: dict, 
+        p1_stats: CombatStats, 
+        p2_stats: CombatStats,
+        battle_type: str = "spar"
+    ) -> str:
+        """生成详细的战斗报告
+        
+        Args:
+            battle_result: 战斗结果
+            p1_stats: 玩家1初始战斗属性
+            p2_stats: 玩家2初始战斗属性
+            battle_type: 战斗类型 ("spar" 或 "duel")
+            
+        Returns:
+            详细战斗报告文本
+        """
+        lines = []
+        
+        # 战斗类型标题
+        type_name = "切磋" if battle_type == "spar" else "决斗"
+        type_icon = "🤝" if battle_type == "spar" else "⚔️"
+        
+        lines.append("╔══════════════════════╗")
+        lines.append(f"║    {type_icon} {type_name}开始 {type_icon}    ║")
+        lines.append("╚══════════════════════╝")
+        lines.append("")
+        
+        # 双方初始属性
+        lines.append("【双方属性】")
+        lines.append(f"┌─ 🔵 {p1_stats.name}")
+        lines.append(f"│  HP: {p1_stats.max_hp} | MP: {p1_stats.max_mp}")
+        lines.append(f"│  物攻: {p1_stats.physical_attack} | 法攻: {p1_stats.magic_attack}")
+        lines.append(f"│  物防: {p1_stats.physical_defense} | 法防: {p1_stats.magic_defense}")
+        lines.append(f"│  速度: {p1_stats.speed} | 暴击: {p1_stats.critical_rate:.0%}")
+        lines.append(f"└─────────────────")
+        lines.append(f"┌─ 🔴 {p2_stats.name}")
+        lines.append(f"│  HP: {p2_stats.max_hp} | MP: {p2_stats.max_mp}")
+        lines.append(f"│  物攻: {p2_stats.physical_attack} | 法攻: {p2_stats.magic_attack}")
+        lines.append(f"│  物防: {p2_stats.physical_defense} | 法防: {p2_stats.magic_defense}")
+        lines.append(f"│  速度: {p2_stats.speed} | 暴击: {p2_stats.critical_rate:.0%}")
+        lines.append(f"└─────────────────")
+        lines.append("")
+        
+        # 战斗日志
+        battle_log = battle_result.get("log", [])
+        rounds = battle_result.get("rounds", 0)
+        
+        lines.append("【战斗经过】")
+        lines.append("─" * 24)
+        
+        # 处理战斗日志，使其更易读
+        current_round = 0
+        for log_line in battle_log:
+            # 跳过开始信息（已经在上面显示了）
+            if "开始" in log_line and ("切磋" in log_line or "决斗" in log_line):
+                continue
+            if log_line.startswith("🔵") and "HP:" in log_line and "MP:" in log_line and log_line.count("/") >= 2:
+                # 这是初始状态行，跳过
+                continue
+            if log_line.startswith("🔴") and "HP:" in log_line and "MP:" in log_line and log_line.count("/") >= 2:
+                # 这是初始状态行，跳过
+                continue
+            
+            # 回合标记
+            if "第" in log_line and "回合" in log_line:
+                current_round += 1
+                lines.append("")
+                lines.append(f"◆ 第{current_round}回合 ◆")
+                continue
+            
+            # 空行跳过
+            if not log_line.strip():
+                continue
+            
+            # 替换标签使其更美观
+            formatted_line = log_line
+            formatted_line = formatted_line.replace("🔵", f"【{p1_stats.name}】")
+            formatted_line = formatted_line.replace("🔴", f"【{p2_stats.name}】")
+            
+            # 添加缩进
+            if formatted_line.startswith("【"):
+                lines.append(f"  {formatted_line}")
+            else:
+                lines.append(f"    {formatted_line}")
+        
+        lines.append("")
+        lines.append("─" * 24)
+        
+        # 战斗结果
+        p1_final = battle_result.get("p1_final", {})
+        p2_final = battle_result.get("p2_final", {})
+        
+        p1_hp = p1_final.get("hp", 0)
+        p1_max_hp = p1_final.get("max_hp", 1)
+        p2_hp = p2_final.get("hp", 0)
+        p2_max_hp = p2_final.get("max_hp", 1)
+        
+        p1_hp_percent = int(p1_hp / p1_max_hp * 100)
+        p2_hp_percent = int(p2_hp / p2_max_hp * 100)
+        
+        # 生成HP条
+        p1_hp_bar = self._generate_hp_bar(p1_hp_percent)
+        p2_hp_bar = self._generate_hp_bar(p2_hp_percent)
+        
+        lines.append("【战斗结果】")
+        lines.append(f"总回合数：{rounds}")
+        lines.append("")
+        lines.append(f"🔵 {p1_stats.name}")
+        lines.append(f"   {p1_hp_bar} {p1_hp}/{p1_max_hp} ({p1_hp_percent}%)")
+        lines.append("")
+        lines.append(f"🔴 {p2_stats.name}")
+        lines.append(f"   {p2_hp_bar} {p2_hp}/{p2_max_hp} ({p2_hp_percent}%)")
+        lines.append("")
+        
+        # 胜负判定
+        if battle_result.get("is_draw"):
+            lines.append("⚖️ 结果：平局")
+        elif battle_result.get("winner") == p1_final.get("user_id"):
+            lines.append(f"🏆 胜者：{p1_stats.name}")
+        else:
+            lines.append(f"🏆 胜者：{p2_stats.name}")
+        
+        return "\n".join(lines)
+
     async def handle_duel(self, event: AstrMessageEvent, target: str):
         """决斗 (消耗气血)"""
         user_id = event.get_sender_id()
@@ -217,14 +365,12 @@ class CombatHandlers:
         # 更新冷却
         await self._update_combat_cooldown(user_id, "duel")
         
-        # 生成战报
-        summary = self.battle_manager.generate_battle_summary(result, include_full_log=False)
+        # 生成详细战报
+        battle_report = self._generate_detailed_battle_report(result, p1_stats, p2_stats, "duel")
         
         # 添加决斗特殊信息
         lines = [
-            "⚔️ 【决斗】",
-            "━━━━━━━━━━━━━━━",
-            summary,
+            battle_report,
             "",
             "━━━━━━━━━━━━━━━",
             "⚠️ 决斗模式：HP已实际扣除",
@@ -299,14 +445,12 @@ class CombatHandlers:
         # 更新冷却
         await self._update_combat_cooldown(user_id, "spar")
         
-        # 生成战报
-        summary = self.battle_manager.generate_battle_summary(result, include_full_log=False)
+        # 生成详细战报
+        battle_report = self._generate_detailed_battle_report(result, p1_stats, p2_stats, "spar")
         
         # 添加切磋特殊信息
         lines = [
-            "🤝 【切磋】",
-            "━━━━━━━━━━━━━━━",
-            summary,
+            battle_report,
             "",
             "━━━━━━━━━━━━━━━",
             "✨ 切磋模式：HP不会实际扣除",
@@ -350,15 +494,14 @@ class CombatHandlers:
         # 执行模拟战斗（不影响实际数据）
         result = self.battle_manager.execute_battle(p1_stats, p2_stats, battle_type="spar")
         
-        # 生成完整战斗日志
-        summary = self.battle_manager.generate_battle_summary(result, include_full_log=True)
+        # 生成详细战报
+        battle_report = self._generate_detailed_battle_report(result, p1_stats, p2_stats, "spar")
         
         lines = [
-            "📜 【模拟战斗日志】",
-            "━━━━━━━━━━━━━━━",
+            "📜 【模拟战斗】",
             "⚠️ 这是模拟战斗，不会影响实际数据",
             "",
-            summary
+            battle_report
         ]
         
         yield event.plain_result("\n".join(lines))

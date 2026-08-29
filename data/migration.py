@@ -5,7 +5,7 @@ from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
-LATEST_DB_VERSION = 21  # v21: 添加战斗属性和技能系统字段
+LATEST_DB_VERSION = 23  # v23: 新增饰品装备位
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -211,7 +211,7 @@ async def _migrate_to_v10(conn: aiosqlite.Connection, config_manager: ConfigMana
         'experience', 'gold', 'state', 'cultivation_start_time', 'last_check_in_date',
         'spiritual_qi', 'max_spiritual_qi', 'blood_qi', 'max_blood_qi',
         'magic_damage', 'physical_damage', 'magic_defense', 'physical_defense', 'mental_power',
-        'weapon', 'armor', 'main_technique', 'techniques',
+        'weapon', 'armor', 'main_technique', 'accessory', 'techniques',
         'active_pill_effects', 'permanent_pill_gains', 'has_resurrection_pill', 'has_debuff_shield', 'pills_inventory'
     }
 
@@ -249,6 +249,7 @@ async def _migrate_to_v10(conn: aiosqlite.Connection, config_manager: ConfigMana
                 weapon TEXT NOT NULL DEFAULT '',
                 armor TEXT NOT NULL DEFAULT '',
                 main_technique TEXT NOT NULL DEFAULT '',
+                accessory TEXT NOT NULL DEFAULT '',
                 techniques TEXT NOT NULL DEFAULT '[]',
                 active_pill_effects TEXT NOT NULL DEFAULT '[]',
                 permanent_pill_gains TEXT NOT NULL DEFAULT '{}',
@@ -344,6 +345,7 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             weapon TEXT NOT NULL DEFAULT '',
             armor TEXT NOT NULL DEFAULT '',
             main_technique TEXT NOT NULL DEFAULT '',
+            accessory TEXT NOT NULL DEFAULT '',
             techniques TEXT NOT NULL DEFAULT '[]',
             
             active_pill_effects TEXT NOT NULL DEFAULT '[]',
@@ -365,7 +367,12 @@ async def _create_all_tables_v2(conn: aiosqlite.Connection):
             hit_rate REAL NOT NULL DEFAULT 0.95,
             dodge_rate REAL NOT NULL DEFAULT 0.05,
             learned_skills TEXT NOT NULL DEFAULT '[]',
-            equipped_skills TEXT NOT NULL DEFAULT '[]'
+            equipped_skills TEXT NOT NULL DEFAULT '[]',
+
+            -- 道侣系统字段（v22）
+            partner_id TEXT NOT NULL DEFAULT '',
+            partner_bindtime INTEGER NOT NULL DEFAULT 0,
+            partner_intimacy INTEGER NOT NULL DEFAULT 0
         )
     """)
 
@@ -1166,3 +1173,41 @@ async def _migrate_to_v21(conn: aiosqlite.Connection, config_manager: ConfigMana
     
     await conn.commit()
     logger.info("v21迁移完成：战斗属性和技能系统字段已添加")
+
+
+@migration(22)
+async def _migrate_to_v22(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v22 - 添加道侣系统玩家字段"""
+    logger.info("开始迁移到v22：添加道侣系统玩家字段")
+
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN partner_id TEXT NOT NULL DEFAULT ''")
+    except Exception as e:
+        logger.warning(f"添加partner_id字段失败（可能已存在）: {e}")
+
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN partner_bindtime INTEGER NOT NULL DEFAULT 0")
+    except Exception as e:
+        logger.warning(f"添加partner_bindtime字段失败（可能已存在）: {e}")
+
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN partner_intimacy INTEGER NOT NULL DEFAULT 0")
+    except Exception as e:
+        logger.warning(f"添加partner_intimacy字段失败（可能已存在）: {e}")
+
+    await conn.commit()
+    logger.info("v22迁移完成：道侣系统字段已添加")
+
+
+@migration(23)
+async def _migrate_to_v23(conn: aiosqlite.Connection, config_manager: ConfigManager):
+    """迁移到v23 - 新增饰品装备位"""
+    logger.info("开始迁移到v23：新增饰品装备位字段")
+
+    try:
+        await conn.execute("ALTER TABLE players ADD COLUMN accessory TEXT NOT NULL DEFAULT ''")
+    except Exception as e:
+        logger.warning(f"添加accessory字段失败（可能已存在）: {e}")
+
+    await conn.commit()
+    logger.info("v23迁移完成：饰品装备位字段已添加")

@@ -342,6 +342,20 @@ class CultivationManager:
         speed = speeds_config.get(config_key, 1.0)
         return speed
 
+    def get_realm_cultivation_bonus(self, player: Player) -> float:
+        """根据境界返回闭关修炼的基础成长倍率。
+
+        低境界保持平缓增长，高境界显著提升，避免后期突破需求与闭关收益脱节。
+        """
+        major_realm = max(0, player.level_index // 9)
+        major_bonus_table = [1.0, 1.2, 1.5, 2.2, 3.5, 6.0, 12.0, 20.0, 32.0]
+        major_bonus = major_bonus_table[min(major_realm, len(major_bonus_table) - 1)]
+
+        # 同一大境界内的小阶段也给予少量成长，避免卡在大境界前几层时提升感过弱。
+        minor_stage = max(0, player.level_index % 9)
+        minor_bonus = 1.0 + minor_stage * 0.03
+        return major_bonus * minor_bonus
+
     def calculate_cultivation_exp(
         self,
         player: Player,
@@ -364,21 +378,22 @@ class CultivationManager:
 
         # 获取灵根速度倍率
         root_speed = self.get_spiritual_root_speed(player)
+        realm_bonus = self.get_realm_cultivation_bonus(player)
 
         # 获取丹药修炼倍率加成
         cultivation_pill_bonus = 1.0
         if pill_multipliers:
             cultivation_pill_bonus = pill_multipliers.get("cultivation_speed", 1.0)
 
-        # 计算总修为倍率：灵根倍率 * (1 + 心法倍率) * 丹药倍率
-        total_multiplier = root_speed * (1.0 + technique_bonus) * cultivation_pill_bonus
+        # 计算总修为倍率：境界成长 * 灵根倍率 * (1 + 心法倍率) * 丹药倍率
+        total_multiplier = realm_bonus * root_speed * (1.0 + technique_bonus) * cultivation_pill_bonus
 
         # 计算总修为：基础修为 * 时长 * 总倍率
         total_exp = int(base_exp * minutes * total_multiplier)
 
         logger.info(
             f"玩家 {player.user_id} 闭关 {minutes} 分钟，"
-            f"基础修为 {base_exp}，灵根倍率 {root_speed}，"
+            f"基础修为 {base_exp}，境界倍率 {realm_bonus:.2f}，灵根倍率 {root_speed}，"
             f"心法加成 {technique_bonus:.2%}，丹药倍率 {cultivation_pill_bonus:.2f}，"
             f"获得修为 {total_exp}"
         )
