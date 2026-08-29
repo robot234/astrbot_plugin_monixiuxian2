@@ -158,3 +158,27 @@ class UserCd:
     def set_extra_data(self, data: dict):
         """设置额外数据"""
         self.extra_data = json.dumps(data, ensure_ascii=False)
+
+
+@dataclass
+class PartnerRequest:
+    """道侣请求数据模型"""
+    
+    id: int  # 主键
+    from_id: str  # 发起者用户ID
+    from_name: str  # 发起者道号
+    target_id: str  # 目标用户ID
+    created_at: int  # 创建时间戳
+    expires_at: int  # 过期时间戳
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> "PartnerRequest":
+        """从字典创建实例"""
+        return cls(
+            id=data.get("id", 0),
+            from_id=data.get("from_id", ""),
+            from_name=data.get("from_name", ""),
+            target_id=data.get("target_id", ""),
+            created_at=data.get("created_at", 0),
+            expires_at=data.get("expires_at", 0)
+        )

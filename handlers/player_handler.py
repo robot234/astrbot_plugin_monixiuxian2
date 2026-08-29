@@ -24,13 +24,24 @@ __all__ = ["PlayerHandler"]
 class PlayerHandler:
     """玩家基础信息处理器 - 支持灵修/体修选择"""
 
-    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager):
+    def __init__(self, db: DataBase, config: AstrBotConfig, config_manager: ConfigManager, 
+                 adventure_event_mgr=None):
         self.db = db
         self.config = config
         self.config_manager = config_manager
         self.cultivation_manager = CultivationManager(config, config_manager)
         self.pill_manager = PillManager(self.db, self.config_manager)
         self.skill_manager = SkillManager(self.db, self.config_manager)
+        self.adventure_event_mgr = adventure_event_mgr
+        self.dual_cult_mgr = None  # 道侣系统管理器
+
+    def set_adventure_event_manager(self, mgr):
+        """设置奇遇事件管理器（用于延迟注入）"""
+        self.adventure_event_mgr = mgr
+
+    def set_dual_cultivation_manager(self, mgr):
+        """设置道侣系统管理器（用于延迟注入）"""
+        self.dual_cult_mgr = mgr
 
     async def handle_start_xiuxian(self, event: AstrMessageEvent, cultivation_type: str = ""):
         """处理创建角色
@@ -126,7 +137,8 @@ class PlayerHandler:
         equipped_items = equipment_manager.get_equipped_items(
             player,
             self.config_manager.items_data,
-            self.config_manager.weapons_data
+            self.config_manager.weapons_data,
+            self.config_manager.techniques_data
         )
         total_attrs = player.get_total_attributes(equipped_items, pill_multipliers)
 
@@ -158,6 +170,7 @@ class PlayerHandler:
         # 获取装备信息
         weapon_name = player.weapon if player.weapon else "无"
         armor_name = player.armor if player.armor else "无"
+        accessory_name = player.accessory if player.accessory else "无"
         technique_name = player.main_technique if player.main_technique else "无"
         
         # 获取突破状态
@@ -239,6 +252,7 @@ class PlayerHandler:
             f"  主修功法：{technique_name}\n"
             f"  法器：{weapon_name}\n"
             f"  防具：{armor_name}\n"
+            f"  饰品：{accessory_name}\n"
         )
         
         # 显示功法被动效果
@@ -283,6 +297,18 @@ class PlayerHandler:
             f"  所在宗门：{sect_name}\n"
             f"  宗门职位：{position_name}\n"
         )
+        
+        # 道侣信息
+        if player.has_partner():
+            partner = await self.db.get_player_by_id(player.partner_id)
+            if partner:
+                partner_name = partner.user_name or partner.user_id[:8]
+                reply_msg += (
+                    f"\n"
+                    f"【道侣信息】\n"
+                    f"  道侣：{partner_name}\n"
+                    f"  亲密度：{player.partner_intimacy}（{player.get_intimacy_title()}）\n"
+                )
         
         # 获取贷款信息
         loan = await self.db.ext.get_active_loan(player.user_id)
@@ -376,6 +402,13 @@ class PlayerHandler:
         await self.db.update_player(player)
         await self.db.ext.set_user_busy(player.user_id, UserStatus.CULTIVATING, 0)
 
+        # 检查道侣是否也在闭关
+        partner_msg = ""
+        if self.dual_cult_mgr and player.has_partner():
+            is_partner_cultivating, msg, bonus = await self.dual_cult_mgr.check_partner_cultivating(player)
+            if is_partner_cultivating:
+                partner_msg = msg
+
         yield event.plain_result(
             "🧘 道友已进入闭关状态\n"
             "━━━━━━━━━━━━━━━\n"
@@ -383,6 +416,7 @@ class PlayerHandler:
             f"💡 发送「{CMD_END_CULTIVATION}」结束闭关\n"
             "⏱️ 每分钟将获得修为，受灵根资质影响。\n"
             "💚 闭关期间会缓慢恢复HP和MP。"
+            f"{partner_msg}"
         )
 
     @player_required
@@ -427,7 +461,8 @@ class PlayerHandler:
             equipped_items = equipment_manager.get_equipped_items(
                 player,
                 self.config_manager.items_data,
-                self.config_manager.weapons_data
+                self.config_manager.weapons_data,
+                self.config_manager.techniques_data
             )
             # 找到主修心法
             for item in equipped_items:
@@ -435,13 +470,26 @@ class PlayerHandler:
                     technique_bonus = item.exp_multiplier
                     break
 
+        # 计算道侣修炼加速
+        partner_bonus = 0.0
+        partner_bonus_msg = ""
+        if self.dual_cult_mgr and player.has_partner():
+            partner_bonus = await self.dual_cult_mgr.get_cultivation_speed_bonus(player)
+            if partner_bonus > 0:
+                partner = await self.db.get_player_by_id(player.partner_id)
+                partner_name = partner.user_name if partner else "道侣"
+                partner_bonus_msg = f"\n💕 道侣加速：+{partner_bonus:.0%}（{partner_name}同修）"
+
         # 计算获得的修为（使用有效时长）
-        gained_exp = self.cultivation_manager.calculate_cultivation_exp(
+        base_gained_exp = self.cultivation_manager.calculate_cultivation_exp(
             player,
             effective_minutes,
             technique_bonus,
             pill_multipliers
         )
+        
+        # 应用道侣加速
+        gained_exp = int(base_gained_exp * (1 + partner_bonus))
 
         # ========== 计算HP/MP回复 ==========
         # 基础回复率：每分钟回复 0.5% 的最大HP/MP
@@ -511,13 +559,23 @@ class PlayerHandler:
             "🌟 道友出关成功！\n"
             "━━━━━━━━━━━━━━━\n"
             f"⏱️ 闭关时长：{time_str}\n"
-            f"📈 获得修为：{gained_exp:,}{exceed_msg}"
+            f"📈 获得修为：{gained_exp:,}{partner_bonus_msg}{exceed_msg}"
             f"{recovery_msg}\n"
             f"💫 当前修为：{player.experience:,}\n"
             "━━━━━━━━━━━━━━━\n"
             "道友已回归红尘，可继续修行。"
         )
-        yield event.plain_result(reply_msg)
+
+        # 尝试触发奇遇事件
+        adventure_msg = ""
+        if self.adventure_event_mgr and duration_minutes >= 30:
+            triggered, event_msg, _ = await self.adventure_event_mgr.try_trigger_event(
+                player, "cultivation_end", {"duration_minutes": duration_minutes}
+            )
+            if triggered and event_msg:
+                adventure_msg = f"\n\n{event_msg}"
+
+        yield event.plain_result(reply_msg + adventure_msg)
 
     @player_required
     async def handle_check_in(self, player: Player, event: AstrMessageEvent):
@@ -549,15 +607,73 @@ class PlayerHandler:
         player.last_check_in_date = today
         await self.db.update_player(player)
 
+        # 道侣每日亲密度增加
+        partner_msg = ""
+        if self.dual_cult_mgr and player.has_partner():
+            has_partner, intimacy_gain = await self.dual_cult_mgr.daily_intimacy_gain(player)
+            if has_partner and intimacy_gain > 0:
+                partner = await self.db.get_player_by_id(player.partner_id)
+                partner_name = partner.user_name if partner else "道侣"
+                partner_msg = f"\n💕 与道侣【{partner_name}】心意相通，亲密度+{intimacy_gain}"
+
         reply_msg = (
             "✅ 签到成功！\n"
             "━━━━━━━━━━━━━━━\n"
             f"💰 获得灵石：{check_in_gold}\n"
-            f"💎 当前灵石：{player.gold}\n"
+            f"💎 当前灵石：{player.gold}"
+            f"{partner_msg}\n"
             "━━━━━━━━━━━━━━━\n"
             "明日再来，莫要忘记哦~"
         )
-        yield event.plain_result(reply_msg)
+
+        # 尝试触发奇遇事件
+        adventure_msg = ""
+        if self.adventure_event_mgr:
+            triggered, event_msg, _ = await self.adventure_event_mgr.try_trigger_event(
+                player, "check_in", {}
+            )
+            if triggered and event_msg:
+                adventure_msg = f"\n\n{event_msg}"
+
+        yield event.plain_result(reply_msg + adventure_msg)
+
+    @player_required
+    async def handle_give_gold(self, player: Player, event: AstrMessageEvent, target_id: str = "", amount: int = 0):
+        """处理玩家互送灵石。"""
+        if not target_id:
+            yield event.plain_result("❌ 请@要赠送的目标，并附带数量，例如：送灵石 @某人 100")
+            return
+
+        if target_id == player.user_id:
+            yield event.plain_result("❌ 不能给自己送灵石。")
+            return
+
+        if amount <= 0:
+            yield event.plain_result("❌ 赠送数量必须大于 0。")
+            return
+
+        target_player = await self.db.get_player_by_id(target_id)
+        if not target_player:
+            yield event.plain_result("❌ 对方尚未开始修仙，无法接收灵石。")
+            return
+
+        if player.gold < amount:
+            yield event.plain_result(f"❌ 灵石不足，当前仅有 {player.gold:,} 灵石。")
+            return
+
+        player.gold -= amount
+        target_player.gold += amount
+
+        await self.db.update_player(player)
+        await self.db.update_player(target_player)
+
+        target_name = target_player.user_name or f"道友{str(target_id)[:8]}"
+        yield event.plain_result(
+            f"🎁 赠送成功！\n"
+            f"💸 你向【{target_name}】赠送了 {amount:,} 灵石\n"
+            f"💎 你的剩余灵石：{player.gold:,}\n"
+            f"💎 对方当前灵石：{target_player.gold:,}"
+        )
 
     @player_required
     async def handle_rebirth(self, player: Player, event: AstrMessageEvent, confirm_text: str = ""):

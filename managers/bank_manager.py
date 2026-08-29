@@ -1,10 +1,14 @@
 # managers/bank_manager.py
 """灵石银行系统管理器 - 包含存取款、贷款、流水记录功能"""
 import time
+import random
 from decimal import Decimal, ROUND_DOWN
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, TYPE_CHECKING
 from ..data import DataBase
 from ..models import Player
+
+if TYPE_CHECKING:
+    from ..core.battle_manager import CombatStats
 
 __all__ = ["BankManager"]
 
@@ -13,10 +17,162 @@ DEFAULT_DAILY_INTEREST_RATE = 0.001  # 存款日利率 0.1%
 DEFAULT_MAX_DEPOSIT = 10000000  # 最大存款上限 1000万
 DEFAULT_LOAN_INTEREST_RATE = 0.005  # 贷款日利率 0.5%
 DEFAULT_LOAN_DURATION_DAYS = 7  # 贷款期限 7天
-DEFAULT_MAX_LOAN_AMOUNT = 1000000  # 最大贷款额度 100万
+DEFAULT_MAX_LOAN_AMOUNT = 1000000  # 最大贷款额度 100万（最高境界）
 DEFAULT_MIN_LOAN_AMOUNT = 1000  # 最小贷款额度 1000
 DEFAULT_BREAKTHROUGH_LOAN_RATE = 0.008  # 突破贷款日利率 0.8%（更高风险）
 DEFAULT_BREAKTHROUGH_LOAN_DURATION = 3  # 突破贷款期限 3天
+DEFAULT_CHALLENGE_COOLDOWN = 3600  # 挑战冷却时间 1小时
+
+# 境界贷款上限配置
+# level_index: 0-9 炼气期, 10-12 筑基期, 13-15 金丹期, 16-18 元婴期, 19+ 化神期及以上
+LOAN_LIMITS_BY_REALM = {
+    "炼气期": {"max_loan": 10000, "min_level_index": 0, "tier": 1},
+    "筑基期": {"max_loan": 50000, "min_level_index": 10, "tier": 2},
+    "金丹期": {"max_loan": 200000, "min_level_index": 13, "tier": 3},
+    "元婴期": {"max_loan": 500000, "min_level_index": 16, "tier": 4},
+    "化神期": {"max_loan": 1000000, "min_level_index": 19, "tier": 5},
+}
+
+# 银行考核官配置 - 每个境界对应一个考核官
+BANK_EXAMINERS = {
+    2: {  # 筑基期考核官
+        "name": "银行护卫·铁甲",
+        "realm": "筑基期",
+        "description": "身披铁甲的银行护卫，实力相当于筑基期中期修士",
+        "level_index": 11,  # 筑基期中期
+        "base_stats": {
+            "max_hp": 800,
+            "max_mp": 200,
+            "physical_attack": 120,
+            "magic_attack": 80,
+            "physical_defense": 100,
+            "magic_defense": 60,
+            "speed": 18,
+            "critical_rate": 0.08,
+            "critical_damage": 1.6,
+            "hit_rate": 0.92,
+            "dodge_rate": 0.08,
+        },
+        "reward_tier": 2,
+    },
+    3: {  # 金丹期考核官
+        "name": "银行执事·金袍",
+        "realm": "金丹期",
+        "description": "身着金袍的银行执事，实力相当于金丹期中期修士",
+        "level_index": 14,  # 金丹期中期
+        "base_stats": {
+            "max_hp": 2000,
+            "max_mp": 500,
+            "physical_attack": 350,
+            "magic_attack": 280,
+            "physical_defense": 280,
+            "magic_defense": 200,
+            "speed": 24,
+            "critical_rate": 0.10,
+            "critical_damage": 1.7,
+            "hit_rate": 0.93,
+            "dodge_rate": 0.10,
+        },
+        "reward_tier": 3,
+    },
+    4: {  # 元婴期考核官
+        "name": "银行长老·玄衣",
+        "realm": "元婴期",
+        "description": "身穿玄衣的银行长老，实力相当于元婴期中期修士",
+        "level_index": 17,  # 元婴期中期
+        "base_stats": {
+            "max_hp": 5000,
+            "max_mp": 1200,
+            "physical_attack": 1000,
+            "magic_attack": 850,
+            "physical_defense": 700,
+            "magic_defense": 550,
+            "speed": 30,
+            "critical_rate": 0.12,
+            "critical_damage": 1.8,
+            "hit_rate": 0.94,
+            "dodge_rate": 0.12,
+        },
+        "reward_tier": 4,
+    },
+    5: {  # 化神期考核官
+        "name": "银行行长·白发",
+        "realm": "化神期",
+        "description": "白发苍苍的银行行长，实力相当于化神期中期修士",
+        "level_index": 20,  # 化神期中期
+        "base_stats": {
+            "max_hp": 12000,
+            "max_mp": 3000,
+            "physical_attack": 3000,
+            "magic_attack": 2500,
+            "physical_defense": 2000,
+            "magic_defense": 1600,
+            "speed": 36,
+            "critical_rate": 0.15,
+            "critical_damage": 2.0,
+            "hit_rate": 0.95,
+            "dodge_rate": 0.15,
+        },
+        "reward_tier": 5,
+    },
+}
+
+
+def get_realm_name(level_index: int) -> str:
+    """根据境界索引获取大境界名称"""
+    if level_index >= 19:
+        return "化神期"
+    elif level_index >= 16:
+        return "元婴期"
+    elif level_index >= 13:
+        return "金丹期"
+    elif level_index >= 10:
+        return "筑基期"
+    else:
+        return "炼气期"
+
+
+def get_realm_tier(level_index: int) -> int:
+    """根据境界索引获取境界等级（1-5）"""
+    if level_index >= 19:
+        return 5
+    elif level_index >= 16:
+        return 4
+    elif level_index >= 13:
+        return 3
+    elif level_index >= 10:
+        return 2
+    else:
+        return 1
+
+
+def get_max_loan_for_tier(tier: int) -> int:
+    """根据等级获取最大贷款额度"""
+    tier_to_loan = {
+        1: 10000,
+        2: 50000,
+        3: 200000,
+        4: 500000,
+        5: 1000000,
+    }
+    return tier_to_loan.get(tier, 10000)
+
+
+def get_max_loan_for_player(level_index: int) -> int:
+    """根据玩家境界获取最大贷款额度"""
+    return get_max_loan_for_tier(get_realm_tier(level_index))
+
+
+def get_tier_realm_name(tier: int) -> str:
+    """根据等级获取境界名称"""
+    tier_to_realm = {
+        1: "炼气期",
+        2: "筑基期",
+        3: "金丹期",
+        4: "元婴期",
+        5: "化神期",
+    }
+    return tier_to_realm.get(tier, "炼气期")
 
 
 class BankManager:
@@ -36,6 +192,194 @@ class BankManager:
         self.min_loan_amount = bank_config.get("MIN_LOAN_AMOUNT", DEFAULT_MIN_LOAN_AMOUNT)
         self.breakthrough_loan_rate = bank_config.get("BREAKTHROUGH_LOAN_RATE", DEFAULT_BREAKTHROUGH_LOAN_RATE)
         self.breakthrough_loan_duration = bank_config.get("BREAKTHROUGH_LOAN_DURATION", DEFAULT_BREAKTHROUGH_LOAN_DURATION)
+        self.challenge_cooldown = bank_config.get("CHALLENGE_COOLDOWN", DEFAULT_CHALLENGE_COOLDOWN)
+    
+    def get_player_loan_limit(self, player: Player) -> int:
+        """获取玩家的贷款上限（考虑挑战提升的额度）"""
+        # 基于境界的基础额度
+        base_limit = get_max_loan_for_player(player.level_index)
+        return base_limit
+    
+    async def get_player_loan_tier(self, player: Player) -> int:
+        """获取玩家当前的贷款等级（可能通过挑战提升）"""
+        # 先获取基于境界的等级
+        realm_tier = get_realm_tier(player.level_index)
+        
+        # 检查是否有通过挑战获得的更高等级
+        challenge_tier = await self.db.ext.get_player_loan_tier(player.user_id)
+        if challenge_tier and challenge_tier > realm_tier:
+            return challenge_tier
+        
+        return realm_tier
+    
+    async def get_player_effective_loan_limit(self, player: Player) -> int:
+        """获取玩家的有效贷款上限（包含挑战提升）"""
+        tier = await self.get_player_loan_tier(player)
+        return get_max_loan_for_tier(tier)
+    
+    def get_loan_limits_info(self) -> str:
+        """获取贷款额度说明"""
+        lines = []
+        for realm, info in LOAN_LIMITS_BY_REALM.items():
+            lines.append(f"  {realm}：最高 {info['max_loan']:,} 灵石")
+        return "\n".join(lines)
+    
+    # ===== 银行挑战相关 =====
+    
+    def get_available_challenges(self, player: Player, current_tier: int) -> List[dict]:
+        """获取玩家可挑战的考核官列表"""
+        available = []
+        for tier, examiner in BANK_EXAMINERS.items():
+            if tier > current_tier:
+                available.append({
+                    "tier": tier,
+                    **examiner
+                })
+        return available
+    
+    async def get_challenge_cooldown(self, player: Player) -> int:
+        """获取挑战冷却剩余时间（秒）"""
+        last_challenge = await self.db.ext.get_system_config(f"bank_challenge_{player.user_id}")
+        if not last_challenge:
+            return 0
+        
+        now = int(time.time())
+        elapsed = now - int(last_challenge)
+        remaining = self.challenge_cooldown - elapsed
+        return max(0, remaining)
+    
+    async def challenge_examiner(self, player: Player, target_tier: int, 
+                                  battle_manager, equipment_manager, skill_manager) -> Tuple[bool, str, dict]:
+        """挑战银行考核官
+        
+        Args:
+            player: 玩家
+            target_tier: 目标等级（2-5）
+            battle_manager: 战斗管理器
+            equipment_manager: 装备管理器
+            skill_manager: 技能管理器
+            
+        Returns:
+            (success, message, battle_result)
+        """
+        # 检查目标等级是否有效
+        if target_tier not in BANK_EXAMINERS:
+            return False, "❌ 无效的考核官等级！", {}
+        
+        # 获取当前贷款等级
+        current_tier = await self.get_player_loan_tier(player)
+        
+        # 检查是否已经达到或超过目标等级
+        if current_tier >= target_tier:
+            current_limit = get_max_loan_for_tier(current_tier)
+            return False, f"❌ 你的贷款额度已达到 {current_limit:,} 灵石，无需挑战此考核官！", {}
+        
+        # 检查是否只能挑战下一级
+        if target_tier > current_tier + 1:
+            next_tier = current_tier + 1
+            next_examiner = BANK_EXAMINERS.get(next_tier)
+            if next_examiner:
+                return False, f"❌ 请先挑战【{next_examiner['name']}】！只能逐级挑战。", {}
+        
+        # 检查冷却时间
+        cooldown = await self.get_challenge_cooldown(player)
+        if cooldown > 0:
+            minutes = cooldown // 60
+            seconds = cooldown % 60
+            return False, f"❌ 挑战冷却中，还需 {minutes}分{seconds}秒", {}
+        
+        # 获取考核官信息
+        examiner = BANK_EXAMINERS[target_tier]
+        
+        # 准备玩家战斗属性
+        player_stats = battle_manager.prepare_combat_stats(player, equipment_manager, skill_manager)
+        
+        # 创建考核官战斗属性
+        examiner_stats = self._create_examiner_combat_stats(examiner, target_tier)
+        
+        # 执行战斗
+        battle_result = battle_manager.execute_battle(
+            player_stats, 
+            examiner_stats, 
+            battle_type="duel"  # 使用决斗模式，不会提前认输
+        )
+        
+        # 记录挑战时间（无论胜负）
+        now = int(time.time())
+        await self.db.ext.set_system_config(f"bank_challenge_{player.user_id}", str(now))
+        
+        # 处理战斗结果 - 玩家是p1，考核官是p2
+        if battle_result.get("winner") == player.user_id:
+            # 玩家胜利，提升贷款等级
+            await self.db.ext.set_player_loan_tier(player.user_id, target_tier)
+            new_limit = get_max_loan_for_tier(target_tier)
+            target_realm = get_tier_realm_name(target_tier)
+            
+            victory_msg = (
+                f"🎉 恭喜战胜【{examiner['name']}】！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"📈 贷款额度提升！\n"
+                f"新额度等级：{target_realm}\n"
+                f"最高可贷：{new_limit:,} 灵石\n"
+                f"━━━━━━━━━━━━━━━\n"
+            )
+            
+            # 添加战斗摘要
+            battle_summary = battle_manager.generate_battle_summary(battle_result, include_full_log=False)
+            victory_msg += battle_summary
+            
+            return True, victory_msg, battle_result
+        else:
+            # 玩家失败
+            defeat_msg = (
+                f"💀 挑战【{examiner['name']}】失败！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"考核官实力强劲，你还需要更多修炼。\n"
+                f"⏱️ 冷却时间：{self.challenge_cooldown // 60}分钟\n"
+                f"━━━━━━━━━━━━━━━\n"
+            )
+            
+            # 添加战斗摘要
+            battle_summary = battle_manager.generate_battle_summary(battle_result, include_full_log=False)
+            defeat_msg += battle_summary
+            
+            return False, defeat_msg, battle_result
+    
+    def _create_examiner_combat_stats(self, examiner: dict, tier: int) -> "CombatStats":
+        """创建考核官的战斗属性"""
+        from ..core.battle_manager import CombatStats
+        
+        stats = examiner["base_stats"]
+        
+        # 使用特殊的user_id标识考核官
+        examiner_id = f"bank_examiner_{tier}"
+        
+        return CombatStats(
+            user_id=examiner_id,
+            name=examiner["name"],
+            hp=stats["max_hp"],
+            max_hp=stats["max_hp"],
+            mp=stats["max_mp"],
+            max_mp=stats["max_mp"],
+            physical_attack=stats["physical_attack"],
+            magic_attack=stats["magic_attack"],
+            physical_defense=stats["physical_defense"],
+            magic_defense=stats["magic_defense"],
+            speed=stats["speed"],
+            critical_rate=stats["critical_rate"],
+            critical_damage=stats["critical_damage"],
+            hit_rate=stats["hit_rate"],
+            dodge_rate=stats["dodge_rate"],
+            skills=[],  # 考核官不使用技能
+            skill_cooldowns={},
+            shield=0,
+            buffs=[],
+            debuffs=[],
+        )
+    
+    def get_examiner_info(self, tier: int) -> Optional[dict]:
+        """获取考核官信息"""
+        return BANK_EXAMINERS.get(tier)
     
     # ===== 存款相关 =====
     
@@ -43,7 +387,7 @@ class BankManager:
         """获取银行账户信息
         
         Returns:
-            dict: {balance, last_interest_time, pending_interest, loan_info}
+            dict: {balance, last_interest_time, pending_interest, loan_info, loan_limit}
         """
         bank_data = await self.db.ext.get_bank_account(player.user_id)
         if not bank_data:
@@ -62,6 +406,20 @@ class BankManager:
         # 获取贷款信息
         loan = await self.db.ext.get_active_loan(player.user_id)
         bank_info["loan"] = loan
+        
+        # 添加贷款上限信息（包含挑战提升）
+        effective_limit = await self.get_player_effective_loan_limit(player)
+        current_tier = await self.get_player_loan_tier(player)
+        realm_tier = get_realm_tier(player.level_index)
+        
+        bank_info["loan_limit"] = effective_limit
+        bank_info["loan_tier"] = current_tier
+        bank_info["realm_tier"] = realm_tier
+        bank_info["realm"] = get_realm_name(player.level_index)
+        bank_info["loan_tier_realm"] = get_tier_realm_name(current_tier)
+        
+        # 是否有可挑战的考核官
+        bank_info["can_challenge"] = current_tier < 5
         
         return bank_info
     
@@ -216,11 +574,33 @@ class BankManager:
             amount: 贷款金额
             loan_type: 贷款类型 (normal/breakthrough)
         """
+        # 获取玩家的有效贷款上限（包含挑战提升）
+        player_loan_limit = await self.get_player_effective_loan_limit(player)
+        current_tier = await self.get_player_loan_tier(player)
+        current_tier_realm = get_tier_realm_name(current_tier)
+        
         if amount < self.min_loan_amount:
             return False, f"最小贷款金额为 {self.min_loan_amount:,} 灵石。"
         
-        if amount > self.max_loan_amount:
-            return False, f"最大贷款金额为 {self.max_loan_amount:,} 灵石。"
+        if amount > player_loan_limit:
+            # 显示当前额度等级和挑战提示
+            next_tier = current_tier + 1
+            challenge_hint = ""
+            if next_tier <= 5:
+                next_examiner = BANK_EXAMINERS.get(next_tier)
+                if next_examiner:
+                    next_limit = get_max_loan_for_tier(next_tier)
+                    challenge_hint = (
+                        f"\n💡 挑战【{next_examiner['name']}】可提升至 {next_limit:,} 灵石"
+                        f"\n   使用 /挑战银行 {next_tier} 发起挑战"
+                    )
+            
+            return False, (
+                f"❌ 贷款金额超出上限！\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"额度等级：{current_tier_realm}\n"
+                f"贷款上限：{player_loan_limit:,} 灵石{challenge_hint}"
+            )
         
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:

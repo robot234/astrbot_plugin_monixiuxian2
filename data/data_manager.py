@@ -61,7 +61,7 @@ class DataBase:
             INSERT INTO players (
                 user_id, level_index, spiritual_root, cultivation_type, user_name, lifespan,
                 experience, gold, state, cultivation_start_time, last_check_in_date, level_up_rate,
-                weapon, armor, main_technique, techniques,
+                weapon, armor, main_technique, accessory, techniques,
                 hp, mp, atk, atkpractice,
                 max_hp, max_mp, speed, critical_rate, critical_damage, hit_rate, dodge_rate,
                 spiritual_qi, max_spiritual_qi, blood_qi, max_blood_qi,
@@ -71,8 +71,9 @@ class DataBase:
                 active_pill_effects, permanent_pill_gains, has_resurrection_pill, has_debuff_shield, pills_inventory,
                 storage_ring, storage_ring_items,
                 daily_pill_usage, last_daily_reset,
-                learned_skills, equipped_skills
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                learned_skills, equipped_skills,
+                partner_id, partner_bindtime, partner_intimacy
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 player.user_id,
@@ -90,6 +91,7 @@ class DataBase:
                 player.weapon,
                 player.armor,
                 player.main_technique,
+                player.accessory,
                 player.techniques,
                 player.hp,
                 player.mp,
@@ -128,7 +130,10 @@ class DataBase:
                 player.daily_pill_usage,
                 player.last_daily_reset,
                 player.learned_skills,
-                player.equipped_skills
+                player.equipped_skills,
+                player.partner_id,
+                player.partner_bindtime,
+                player.partner_intimacy
             )
         )
         await self.conn.commit()
@@ -177,6 +182,7 @@ class DataBase:
                 weapon = ?,
                 armor = ?,
                 main_technique = ?,
+                accessory = ?,
                 techniques = ?,
                 hp = ?,
                 mp = ?,
@@ -215,7 +221,10 @@ class DataBase:
                 daily_pill_usage = ?,
                 last_daily_reset = ?,
                 learned_skills = ?,
-                equipped_skills = ?
+                equipped_skills = ?,
+                partner_id = ?,
+                partner_bindtime = ?,
+                partner_intimacy = ?
             WHERE user_id = ?
             """,
             (
@@ -233,6 +242,7 @@ class DataBase:
                 player.weapon,
                 player.armor,
                 player.main_technique,
+                player.accessory,
                 player.techniques,
                 player.hp,
                 player.mp,
@@ -272,6 +282,9 @@ class DataBase:
                 player.last_daily_reset,
                 player.learned_skills,
                 player.equipped_skills,
+                player.partner_id,
+                player.partner_bindtime,
+                player.partner_intimacy,
                 player.user_id
             )
         )

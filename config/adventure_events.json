@@ -1,0 +1,1545 @@
+{
+    "events": {
+        "fortune_stone": {
+            "id": "fortune_stone",
+            "name": "灵石矿脉",
+            "type": "fortune",
+            "rarity": "common",
+            "description": "你在山间发现了一处隐秘的灵石矿脉，闪烁着淡淡的光芒。",
+            "min_level": 0,
+            "max_level": 999,
+            "weight": 100,
+            "rewards": {
+                "gold": {"min": 100, "max": 500},
+                "exp": {"min": 50, "max": 200}
+            },
+            "flavor_text": "这处矿脉虽然不大，但足以让你满载而归。"
+        },
+        "fortune_herb": {
+            "id": "fortune_herb",
+            "name": "灵草福地",
+            "type": "fortune",
+            "rarity": "common",
+            "description": "一片隐秘的山谷中，生长着各种珍贵的灵草。",
+            "min_level": 0,
+            "max_level": 999,
+            "weight": 80,
+            "rewards": {
+                "items": [
+                    {"name": "灵草", "count": {"min": 2, "max": 5}, "chance": 0.8},
+                    {"name": "血灵草", "count": {"min": 1, "max": 3}, "chance": 0.4},
+                    {"name": "冰心草", "count": {"min": 1, "max": 2}, "chance": 0.2}
+                ]
+            },
+            "flavor_text": "你小心翼翼地采集这些灵草，收获颇丰。"
+        },
+        "fortune_treasure": {
+            "id": "fortune_treasure",
+            "name": "前辈遗宝",
+            "type": "fortune",
+            "rarity": "rare",
+            "description": "你发现了一处隐秘的洞府，似乎是某位前辈的修炼之所。洞府中央放着一个玉盒。",
+            "min_level": 9,
+            "max_level": 999,
+            "weight": 30,
+            "rewards": {
+                "gold": {"min": 500, "max": 2000},
+                "exp": {"min": 500, "max": 1500},
+                "items": [
+                    {"name": "聚气丹", "count": {"min": 1, "max": 2}, "chance": 0.5},
+                    {"name": "培元丹", "count": {"min": 1, "max": 1}, "chance": 0.3}
+                ]
+            },
+            "flavor_text": "前辈的遗泽让你受益匪浅。"
+        },
+        "inheritance_sword": {
+            "id": "inheritance_sword",
+            "name": "剑仙传承",
+            "type": "inheritance",
+            "rarity": "epic",
+            "description": "一道剑光从天而降，化作一位白衣剑仙的虚影。他注视着你，似乎在考量你的资质。",
+            "min_level": 18,
+            "max_level": 999,
+            "weight": 10,
+            "prerequisites": [],
+            "npc": {
+                "name": "剑仙遗念",
+                "dialogue": "吾乃万年前的剑修，道号'青云'。见你根骨不凡，愿传你一式剑诀。"
+            },
+            "rewards": {
+                "exp": {"min": 2000, "max": 5000},
+                "skills": [
+                    {"id": "sword_qi_slash", "chance": 0.3},
+                    {"id": "wind_blade", "chance": 0.5}
+                ],
+                "attributes": {
+                    "critical_rate": {"min": 0.01, "max": 0.03}
+                }
+            },
+            "flavor_text": "剑仙的传承融入你的识海，你对剑道有了更深的领悟。"
+        },
+        "inheritance_body": {
+            "id": "inheritance_body",
+            "name": "炼体秘法",
+            "type": "inheritance",
+            "rarity": "epic",
+            "description": "你在一处瀑布下发现了一块刻满符文的巨石，上面记载着一门古老的炼体秘法。",
+            "min_level": 18,
+            "max_level": 999,
+            "weight": 10,
+            "cultivation_type": "体修",
+            "rewards": {
+                "exp": {"min": 2000, "max": 5000},
+                "attributes": {
+                    "physical_defense": {"min": 10, "max": 30},
+                    "max_hp": {"min": 50, "max": 150}
+                }
+            },
+            "flavor_text": "你按照秘法修炼，感觉肉身变得更加强韧。"
+        },
+        "challenge_beast": {
+            "id": "challenge_beast",
+            "name": "妖兽拦路",
+            "type": "challenge",
+            "rarity": "common",
+            "description": "一头凶猛的妖兽挡住了你的去路，它的眼中闪烁着嗜血的光芒。",
+            "min_level": 0,
+            "max_level": 999,
+            "weight": 60,
+            "battle": {
+                "enemy_name": "山林妖兽",
+                "level_offset": -3,
+                "stat_multiplier": 0.8
+            },
+            "rewards_win": {
+                "gold": {"min": 200, "max": 800},
+                "exp": {"min": 300, "max": 800},
+                "items": [
+                    {"name": "妖兽内丹", "count": {"min": 1, "max": 1}, "chance": 0.3}
+                ]
+            },
+            "rewards_lose": {
+                "hp_loss_percent": 0.3
+            },
+            "flavor_text_win": "你击败了妖兽，从它的巢穴中找到了一些宝物。",
+            "flavor_text_lose": "你不敌妖兽，狼狈逃离，身受重伤。"
+        },
+        "challenge_rogue": {
+            "id": "challenge_rogue",
+            "name": "散修劫道",
+            "type": "challenge",
+            "rarity": "common",
+            "description": "一名散修拦住了你的去路，他的眼中闪烁着贪婪的光芒。「识相的就把身上的灵石交出来！」",
+            "min_level": 9,
+            "max_level": 999,
+            "weight": 50,
+            "battle": {
+                "enemy_name": "劫道散修",
+                "level_offset": 0,
+                "stat_multiplier": 0.9
+            },
+            "rewards_win": {
+                "gold": {"min": 300, "max": 1200},
+                "exp": {"min": 200, "max": 600}
+            },
+            "rewards_lose": {
+                "gold_loss_percent": 0.1,
+                "hp_loss_percent": 0.2
+            },
+            "flavor_text_win": "你击败了这名散修，搜刮了他身上的财物。",
+            "flavor_text_lose": "你不敌对方，被抢走了部分灵石，狼狈逃离。"
+        },
+        "challenge_demon": {
+            "id": "challenge_demon",
+            "name": "魔修袭击",
+            "type": "challenge",
+            "rarity": "rare",
+            "description": "一股阴冷的气息袭来，一名浑身散发着黑气的魔修出现在你面前。「正好缺一个炉鼎，你来得正好！」",
+            "min_level": 27,
+            "max_level": 999,
+            "weight": 25,
+            "battle": {
+                "enemy_name": "魔道修士",
+                "level_offset": 3,
+                "stat_multiplier": 1.1
+            },
+            "rewards_win": {
+                "gold": {"min": 1000, "max": 3000},
+                "exp": {"min": 1000, "max": 3000},
+                "items": [
+                    {"name": "魔晶", "count": {"min": 1, "max": 2}, "chance": 0.4},
+                    {"name": "破魔丹", "count": {"min": 1, "max": 1}, "chance": 0.2}
+                ]
+            },
+            "rewards_lose": {
+                "hp_loss_percent": 0.5,
+                "exp_loss_percent": 0.05
+            },
+            "flavor_text_win": "你击杀了这名魔修，从他身上搜出了不少好东西。",
+            "flavor_text_lose": "你险些被魔修炼化，拼死逃脱，损失惨重。"
+        },
+        "choice_merchant": {
+            "id": "choice_merchant",
+            "name": "神秘商人",
+            "type": "choice",
+            "rarity": "rare",
+            "description": "一位戴着斗笠的神秘商人出现在你面前，他的摊位上摆满了奇珍异宝。「客官，要看看吗？」",
+            "min_level": 9,
+            "max_level": 999,
+            "weight": 25,
+            "npc": {
+                "name": "神秘商人",
+                "dialogue": "老夫这里有好东西，就看客官有没有这个缘分了。"
+            },
+            "choices": [
+                {
+                    "id": "buy_cheap",
+                    "text": "购买便宜货物（花费500灵石）",
+                    "cost": {"gold": 500},
+                    "outcomes": [
+                        {
+                            "chance": 0.6,
+                            "result": "common_item",
+                            "description": "你买到了一些普通的灵草。",
+                            "rewards": {
+                                "items": [
+                                    {"name": "灵草", "count": {"min": 3, "max": 5}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "good_item",
+                            "description": "运气不错！你买到了一颗丹药。",
+                            "rewards": {
+                                "items": [
+                                    {"name": "聚气丹", "count": {"min": 1, "max": 2}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.1,
+                            "result": "rare_item",
+                            "description": "大赚！这是一件稀有物品！",
+                            "rewards": {
+                                "items": [
+                                    {"name": "九叶灵芝", "count": {"min": 1, "max": 1}, "chance": 1.0}
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "buy_expensive",
+                    "text": "购买昂贵货物（花费2000灵石）",
+                    "cost": {"gold": 2000},
+                    "outcomes": [
+                        {
+                            "chance": 0.4,
+                            "result": "good_item",
+                            "description": "你买到了一些不错的丹药。",
+                            "rewards": {
+                                "items": [
+                                    {"name": "培元丹", "count": {"min": 1, "max": 2}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.4,
+                            "result": "rare_item",
+                            "description": "物有所值！这是一件稀有物品！",
+                            "rewards": {
+                                "exp": {"min": 1000, "max": 2000},
+                                "items": [
+                                    {"name": "火焰花", "count": {"min": 2, "max": 3}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "epic_item",
+                            "description": "天大的运气！这是一件极品宝物！",
+                            "rewards": {
+                                "exp": {"min": 2000, "max": 4000},
+                                "gold": {"min": 1000, "max": 2000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "gamble",
+                    "text": "赌一把（花费1000灵石）",
+                    "cost": {"gold": 1000},
+                    "outcomes": [
+                        {
+                            "chance": 0.5,
+                            "result": "lose",
+                            "description": "你打开盒子，里面空空如也。商人已经消失不见。",
+                            "rewards": {}
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "win_small",
+                            "description": "盒子里有一些灵石和丹药！",
+                            "rewards": {
+                                "gold": {"min": 1500, "max": 2500},
+                                "items": [
+                                    {"name": "聚气丹", "count": {"min": 1, "max": 2}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "win_big",
+                            "description": "大奖！盒子里装满了宝物！",
+                            "rewards": {
+                                "gold": {"min": 3000, "max": 5000},
+                                "exp": {"min": 1000, "max": 2000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "leave",
+                    "text": "离开",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "leave",
+                            "description": "你礼貌地拒绝了商人，继续赶路。",
+                            "rewards": {}
+                        }
+                    ]
+                }
+            ]
+        },
+        "choice_cave": {
+            "id": "choice_cave",
+            "name": "神秘洞穴",
+            "type": "choice",
+            "rarity": "common",
+            "description": "你发现了一个隐秘的洞穴，洞口散发着微弱的灵气波动。洞内漆黑一片，不知深处有什么。",
+            "min_level": 0,
+            "max_level": 999,
+            "weight": 40,
+            "choices": [
+                {
+                    "id": "explore_careful",
+                    "text": "小心探索",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.5,
+                            "result": "find_treasure",
+                            "description": "你在洞穴深处发现了一些前人留下的物资。",
+                            "rewards": {
+                                "gold": {"min": 100, "max": 300},
+                                "exp": {"min": 50, "max": 150}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "find_herb",
+                            "description": "洞穴中生长着一些喜阴的灵草。",
+                            "rewards": {
+                                "items": [
+                                    {"name": "灵草", "count": {"min": 1, "max": 3}, "chance": 1.0}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "nothing",
+                            "description": "洞穴很深，但你什么也没找到。",
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "id": "explore_deep",
+                    "text": "深入探索（有风险）",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.3,
+                            "result": "great_treasure",
+                            "description": "你在洞穴最深处发现了一个隐秘的宝藏！",
+                            "rewards": {
+                                "gold": {"min": 500, "max": 1500},
+                                "exp": {"min": 300, "max": 800},
+                                "items": [
+                                    {"name": "聚气丹", "count": {"min": 1, "max": 1}, "chance": 0.5}
+                                ]
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "monster",
+                            "description": "洞穴深处潜伏着一只妖兽！你与它搏斗后狼狈逃出。",
+                            "rewards": {
+                                "hp_loss_percent": 0.2
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "trap",
+                            "description": "你触发了洞穴中的禁制，受到了反噬。",
+                            "rewards": {
+                                "hp_loss_percent": 0.15,
+                                "mp_loss_percent": 0.2
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "nothing",
+                            "description": "洞穴很深，但除了一些蝙蝠，什么也没有。",
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "id": "leave",
+                    "text": "离开",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "leave",
+                            "description": "你决定不冒险，继续赶路。",
+                            "rewards": {}
+                        }
+                    ]
+                }
+            ]
+        },
+        "choice_beggar": {
+            "id": "choice_beggar",
+            "name": "落魄老者",
+            "type": "choice",
+            "rarity": "rare",
+            "description": "路边坐着一位衣衫褴褛的老者，他看起来饥寒交迫。「施主，可否赏口饭吃？」",
+            "min_level": 0,
+            "max_level": 999,
+            "weight": 20,
+            "npc": {
+                "name": "落魄老者",
+                "dialogue": "老朽已经三天没吃东西了..."
+            },
+            "choices": [
+                {
+                    "id": "give_gold",
+                    "text": "施舍灵石（100灵石）",
+                    "cost": {"gold": 100},
+                    "outcomes": [
+                        {
+                            "chance": 0.7,
+                            "result": "grateful",
+                            "description": "老者感激涕零，连连道谢后离去。",
+                            "rewards": {
+                                "exp": {"min": 50, "max": 100}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "hidden_master",
+                            "description": "老者突然站起，气势大变！「善心可嘉，老夫便指点你一二。」原来是一位隐世高人！",
+                            "rewards": {
+                                "exp": {"min": 1000, "max": 3000},
+                                "attributes": {
+                                    "mental_power": {"min": 5, "max": 15}
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "give_more",
+                    "text": "慷慨施舍（500灵石）",
+                    "cost": {"gold": 500},
+                    "outcomes": [
+                        {
+                            "chance": 0.4,
+                            "result": "grateful",
+                            "description": "老者感激涕零，祝你修行顺利。",
+                            "rewards": {
+                                "exp": {"min": 200, "max": 400}
+                            }
+                        },
+                        {
+                            "chance": 0.6,
+                            "result": "hidden_master",
+                            "description": "老者哈哈大笑，露出真容！「难得有如此善心之人，老夫传你一门秘法！」",
+                            "rewards": {
+                                "exp": {"min": 2000, "max": 5000},
+                                "skills": [
+                                    {"id": "meditation", "chance": 0.3}
+                                ],
+                                "attributes": {
+                                    "mental_power": {"min": 10, "max": 30}
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "ignore",
+                    "text": "无视他",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.8,
+                            "result": "nothing",
+                            "description": "你从老者身边走过，继续赶路。",
+                            "rewards": {}
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "curse",
+                            "description": "老者冷哼一声，你感到一阵不适。",
+                            "rewards": {
+                                "hp_loss_percent": 0.05
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "rob",
+                    "text": "搜刮他的身上",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.3,
+                            "result": "find_gold",
+                            "description": "你从老者身上搜出了一些灵石。",
+                            "rewards": {
+                                "gold": {"min": 50, "max": 150}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "nothing",
+                            "description": "老者身上什么也没有。",
+                            "rewards": {}
+                        },
+                        {
+                            "chance": 0.4,
+                            "result": "hidden_master_angry",
+                            "description": "老者勃然大怒，一掌将你击飞！「竖子！老夫本欲传你机缘，你却如此行事！」",
+                            "rewards": {
+                                "hp_loss_percent": 0.4,
+                                "exp_loss_percent": 0.1
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "story_ancient_battlefield": {
+            "id": "story_ancient_battlefield",
+            "name": "远古战场",
+            "type": "story",
+            "rarity": "epic",
+            "description": "你误入了一处远古战场的遗迹，空气中弥漫着残留的杀意。",
+            "min_level": 27,
+            "max_level": 999,
+            "weight": 8,
+            "stages": [
+                {
+                    "stage_id": 1,
+                    "text": "战场上到处都是残破的法器和枯骨，你感受到了远古大能的气息。",
+                    "choices": [
+                        {
+                            "id": "search_weapons",
+                            "text": "搜寻残破法器",
+                            "next_stage": 2
+                        },
+                        {
+                            "id": "search_bones",
+                            "text": "查看枯骨遗骸",
+                            "next_stage": 3
+                        },
+                        {
+                            "id": "leave",
+                            "text": "离开此地",
+                            "next_stage": -1,
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 2,
+                    "text": "你在残破的法器中发现了一柄还算完整的飞剑，剑身上刻着古老的符文。",
+                    "choices": [
+                        {
+                            "id": "take_sword",
+                            "text": "尝试炼化飞剑",
+                            "next_stage": 4
+                        },
+                        {
+                            "id": "continue_search",
+                            "text": "继续搜寻",
+                            "next_stage": 5
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 3,
+                    "text": "一具枯骨的手中紧握着一枚玉简，似乎记载着什么。",
+                    "choices": [
+                        {
+                            "id": "read_jade",
+                            "text": "读取玉简",
+                            "next_stage": 6
+                        },
+                        {
+                            "id": "take_ring",
+                            "text": "取走枯骨手上的戒指",
+                            "next_stage": 7
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 4,
+                    "text": "你尝试炼化飞剑...",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 0.6,
+                            "result": "success",
+                            "description": "飞剑认主！虽然威力大不如前，但仍是一件不错的法器。",
+                            "rewards": {
+                                "exp": {"min": 1000, "max": 2000},
+                                "attributes": {
+                                    "physical_damage": {"min": 5, "max": 15},
+                                    "speed": {"min": 2, "max": 5}
+                                }
+                            }
+                        },
+                        {
+                            "chance": 0.4,
+                            "result": "backlash",
+                            "description": "飞剑中残留的剑意反噬，你受了轻伤，但也有所领悟。",
+                            "rewards": {
+                                "hp_loss_percent": 0.2,
+                                "exp": {"min": 500, "max": 1000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 5,
+                    "text": "你继续搜寻，发现了一个隐秘的储物袋。",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "find_bag",
+                            "description": "储物袋中有一些灵石和丹药！",
+                            "rewards": {
+                                "gold": {"min": 800, "max": 2000},
+                                "items": [
+                                    {"name": "培元丹", "count": {"min": 1, "max": 2}, "chance": 0.6}
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 6,
+                    "text": "玉简中记载着一门古老的功法心得...",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 0.7,
+                            "result": "learn",
+                            "description": "你从中领悟了一些修炼心得，修为大涨！",
+                            "rewards": {
+                                "exp": {"min": 2000, "max": 4000}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "enlightenment",
+                            "description": "你进入了顿悟状态，对大道有了更深的理解！",
+                            "rewards": {
+                                "exp": {"min": 3000, "max": 6000},
+                                "attributes": {
+                                    "mental_power": {"min": 10, "max": 25}
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 7,
+                    "text": "你取下戒指，发现这是一枚储物戒...",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 0.5,
+                            "result": "treasure",
+                            "description": "戒指中存放着大量灵石！",
+                            "rewards": {
+                                "gold": {"min": 2000, "max": 5000}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "curse",
+                            "description": "戒指上附着怨念，你受到了侵蚀。",
+                            "rewards": {
+                                "hp_loss_percent": 0.15,
+                                "gold": {"min": 500, "max": 1000}
+                            }
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "empty",
+                            "description": "戒指已经损坏，里面空无一物。",
+                            "rewards": {}
+                        }
+                    ]
+                }
+            ]
+        },
+        "story_fairy_pond": {
+            "id": "story_fairy_pond",
+            "name": "仙池奇遇",
+            "type": "story",
+            "rarity": "legendary",
+            "description": "你发现了一处隐秘的仙池，池水散发着七彩光芒，灵气浓郁至极。",
+            "min_level": 36,
+            "max_level": 999,
+            "weight": 3,
+            "stages": [
+                {
+                    "stage_id": 1,
+                    "text": "仙池边站着一位仙风道骨的老者，他似乎在等待着什么。见你到来，微微点头。「有缘人，你终于来了。」",
+                    "npc": {
+                        "name": "守池仙人",
+                        "dialogue": "此池乃上古仙人所留，可助修士洗筋伐髓。但需通过考验。"
+                    },
+                    "choices": [
+                        {
+                            "id": "accept_test",
+                            "text": "接受考验",
+                            "next_stage": 2
+                        },
+                        {
+                            "id": "ask_about",
+                            "text": "询问详情",
+                            "next_stage": 3
+                        },
+                        {
+                            "id": "leave_pond",
+                            "text": "婉拒离开",
+                            "next_stage": -1,
+                            "rewards": {
+                                "exp": {"min": 100, "max": 200}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 2,
+                    "text": "老者点头：「考验分为三关——心境、武道、悟性。你选择先挑战哪一关？」",
+                    "choices": [
+                        {
+                            "id": "test_mind",
+                            "text": "心境考验",
+                            "next_stage": 4
+                        },
+                        {
+                            "id": "test_combat",
+                            "text": "武道考验",
+                            "next_stage": 5
+                        },
+                        {
+                            "id": "test_wisdom",
+                            "text": "悟性考验",
+                            "next_stage": 6
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 3,
+                    "text": "老者解释道：「仙池可以提升根骨资质，但需要付出代价。心境考验考验定力，武道考验考验实力，悟性考验考验智慧。通过任意一关即可入池。」",
+                    "choices": [
+                        {
+                            "id": "accept_after_ask",
+                            "text": "我准备好了",
+                            "next_stage": 2
+                        },
+                        {
+                            "id": "leave_after_ask",
+                            "text": "我还需要准备",
+                            "next_stage": -1,
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 4,
+                    "text": "老者施法，你陷入了幻境。无数心魔向你袭来，试图动摇你的道心...",
+                    "is_final": true,
+                    "check": {
+                        "type": "mental_power",
+                        "threshold": 100,
+                        "success_chance_base": 0.5,
+                        "success_chance_per_point": 0.003
+                    },
+                    "outcomes": [
+                        {
+                            "result": "pass",
+                            "condition": "check_success",
+                            "description": "你的道心坚定，心魔无法动摇你分毫。老者满意地点头，引你入池。",
+                            "rewards": {
+                                "exp": {"min": 5000, "max": 10000},
+                                "attributes": {
+                                    "mental_power": {"min": 20, "max": 50},
+                                    "max_mp": {"min": 50, "max": 100}
+                                }
+                            }
+                        },
+                        {
+                            "result": "fail",
+                            "condition": "check_fail",
+                            "description": "心魔趁虚而入，你险些走火入魔。老者出手将你救出。「道心不稳，还需磨练。」",
+                            "rewards": {
+                                "hp_loss_percent": 0.3,
+                                "exp": {"min": 500, "max": 1000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 5,
+                    "text": "老者召唤出一道剑气化身：「击败它，便算你通过。」",
+                    "is_final": true,
+                    "battle": {
+                        "enemy_name": "剑气化身",
+                        "level_offset": 5,
+                        "stat_multiplier": 1.2
+                    },
+                    "outcomes": [
+                        {
+                            "result": "win",
+                            "condition": "battle_win",
+                            "description": "你击败了剑气化身！老者赞许地点头，引你入池。",
+                            "rewards": {
+                                "exp": {"min": 5000, "max": 10000},
+                                "attributes": {
+                                    "physical_damage": {"min": 10, "max": 25},
+                                    "magic_damage": {"min": 10, "max": 25},
+                                    "max_hp": {"min": 50, "max": 150}
+                                }
+                            }
+                        },
+                        {
+                            "result": "lose",
+                            "condition": "battle_lose",
+                            "description": "你不敌剑气化身，被击退。老者叹息：「实力尚浅，日后再来吧。」",
+                            "rewards": {
+                                "hp_loss_percent": 0.4,
+                                "exp": {"min": 1000, "max": 2000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 6,
+                    "text": "老者问道：「修仙之道，何为根本？」",
+                    "choices": [
+                        {
+                            "id": "answer_power",
+                            "text": "实力为尊，弱肉强食",
+                            "next_stage": 7
+                        },
+                        {
+                            "id": "answer_dao",
+                            "text": "顺应天道，自然而然",
+                            "next_stage": 8
+                        },
+                        {
+                            "id": "answer_heart",
+                            "text": "本心不移，求道不止",
+                            "next_stage": 9
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 7,
+                    "text": "老者摇头：「执念太深，非长久之道。」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "wrong",
+                            "description": "老者挥手将你送出，你只得到了一些感悟。",
+                            "rewards": {
+                                "exp": {"min": 1000, "max": 2000}
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 8,
+                    "text": "老者微笑：「顺天而行，不错。但还差一点。」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "partial",
+                            "description": "老者允许你在池边修炼片刻，你有所收获。",
+                            "rewards": {
+                                "exp": {"min": 3000, "max": 5000},
+                                "attributes": {
+                                    "mental_power": {"min": 5, "max": 15}
+                                }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 9,
+                    "text": "老者大笑：「妙哉！这才是修仙真谛！」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "perfect",
+                            "description": "老者亲自引你入池，你感受到灵气洗涤全身，脱胎换骨！",
+                            "rewards": {
+                                "exp": {"min": 8000, "max": 15000},
+                                "attributes": {
+                                    "mental_power": {"min": 30, "max": 60},
+                                    "max_hp": {"min": 100, "max": 200},
+                                    "max_mp": {"min": 50, "max": 100}
+                                }
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "challenge_rival_showdown": {
+            "id": "challenge_rival_showdown",
+            "name": "宿敌对决",
+            "type": "challenge",
+            "rarity": "epic",
+            "description": "宗门大比的最终擂台上，你与你的宿敌狭路相逢。台下，无数同门，以及你暗恋已久的青梅竹马[小师妹]，都在注视着这场战斗。胜者将获得宗门至宝「龙血锻体丹」！",
+            "min_level": 30,
+            "max_level": 999,
+            "weight": 8,
+            "battle": {
+                "enemy_name": "你的宿敌",
+                "level_offset": 2,
+                "stat_multiplier": 1.15
+            },
+            "rewards_win": {
+                "gold": {"min": 5000, "max": 10000},
+                "exp": {"min": 8000, "max": 15000},
+                "items": [
+                    {"name": "龙血锻体丹", "count": {"min": 1, "max": 1}, "chance": 1.0}
+                ]
+            },
+            "rewards_lose": {
+                "hp_loss_percent": 0.5,
+                "exp_loss_percent": 0.1,
+                "gold_loss_percent": 0.2
+            },
+            "flavor_text_win": "你击败了宿敌，赢得了荣耀与至宝！台下的小师妹眼中异彩连连，为你欢呼。",
+            "flavor_text_lose": "你在众目睽睽之下惨败，倒在血泊中。你的宿敌接过「龙血锻体丹」，走到小师妹面前，将丹药赠予了她。她犹豫片刻，最终还是收下，并扶着胜利者离开了，只留给你一个复杂的眼神和远去的背影。你听到周围传来同情的叹息和宿敌得意的笑声，一口逆血喷出，心神大创。"
+        },
+        "choice_treasure_auction": {
+            "id": "choice_treasure_auction",
+            "name": "珍宝拍卖会",
+            "type": "choice",
+            "rarity": "rare",
+            "description": "你参加了一场地下拍卖会，压轴宝物是一株能治愈神魂创伤的「九转还魂草」。这正是你为救治受伤的道侣/挚友所急需之物。然而，你的老对头，一个富有的宗门弟子，似乎也对它志在必得。",
+            "min_level": 25,
+            "max_level": 999,
+            "weight": 20,
+            "npc": {
+                "name": "拍卖师",
+                "dialogue": "「九转还魂草」，起拍价五千灵石，每次加价不得少于五百！"
+            },
+            "choices": [
+                {
+                    "id": "bid",
+                    "text": "不惜一切代价拍下！",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.5,
+                            "result": "win_bid",
+                            "description": "经过激烈的竞价，你成功拍下了「九转还魂草」！",
+                            "check": {"type": "gold", "value": 15000},
+                            "rewards": {
+                                "gold": -15000,
+                                "items": [{"name": "九转还魂草", "count": 1, "chance": 1.0}]
+                            }
+                        },
+                        {
+                            "chance": 0.5,
+                            "result": "lose_bid_ntr",
+                            "description": "你的灵石储备终究不及对方丰厚，眼睁睁看着「九转还魂草」被对头拍走。拍卖会后，他拦住你，当着你的面将灵草碾碎，轻蔑地笑道：「我得不到的女人，你也别想救活。这就是你与我作对的下场！」你无能为力，道心几乎崩溃。",
+                            "check": {"type": "gold", "value": 14999},
+                            "rewards": {
+                                "hp_loss_percent": 0.3,
+                                "attributes": { "mental_power": {"min": -15, "max": -10} }
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "give_up",
+                    "text": "放弃竞拍",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "abandon",
+                            "description": "你无奈地放弃了。对头轻松拍下灵草后，走到你面前，低声道：「废物，连心爱之人的命都救不了。」你紧握双拳，指甲深深嵌入肉中。",
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "id": "rob",
+                    "text": "会后劫杀，夺取灵草",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "battle",
+                            "description": "你决定铤而走险！",
+                            "battle": {
+                                "enemy_name": "富有的对头",
+                                "level_offset": 3,
+                                "stat_multiplier": 1.2
+                            },
+                            "rewards_win": {
+                                "exp": {"min": 3000, "max": 6000},
+                                "gold": {"min": 8000, "max": 15000},
+                                "items": [{"name": "九转还魂草", "count": 1, "chance": 1.0}],
+                                "flavor_text_win": "你成功地杀人夺宝，虽然手段不光彩，但你得到了需要的一切。"
+                            },
+                            "rewards_lose": {
+                                "hp_loss_percent": 0.6,
+                                "exp_loss_percent": 0.15,
+                                "flavor_text_lose": "你被对方的护道者当场镇压，打成重伤。你的对头走过来，踩着你的脸说道：「不自量力。现在，我会让你看着你的道侣/挚友神魂消散，在绝望中死去。」"
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "story_secret_realm_betrayal": {
+            "id": "story_secret_realm_betrayal",
+            "name": "秘境背叛",
+            "type": "story",
+            "rarity": "legendary",
+            "description": "在一处上古秘境中，你和一直对你示好的[师姐]共同发现了一池「阴阳造化泉」。此泉能让两人同时修炼，阴阳互补，修为大进，但过程极为凶险，需要绝对的信任。",
+            "min_level": 36,
+            "max_level": 999,
+            "weight": 2,
+            "stages": [
+                {
+                    "stage_id": 1,
+                    "text": "师姐脸颊微红，提议道：「师弟，这等机缘千载难逢，你我二人联手，必能突破瓶颈。你……愿意信我吗？」",
+                    "choices": [
+                        { "id": "agree", "text": "我信师姐，我们开始吧。", "next_stage": 2 },
+                        { "id": "hesitate", "text": "此事体大，容我三思。", "next_stage": 3 }
+                    ]
+                },
+                {
+                    "stage_id": 2,
+                    "text": "你们二人进入泉中，灵力开始交融。就在你放下所有戒备，全力运转功法之时，秘境入口突然闯入一人——正是那位一直追求师姐、背景深厚的[大师兄]！他看到泉中景象，目眦欲裂！",
+                    "choices": [
+                        { "id": "protect", "text": "（全力护住师姐，准备迎敌）", "next_stage": 4 }
+                    ]
+                },
+                {
+                    "stage_id": 3,
+                    "text": "师姐眼中闪过一丝失望，叹了口气：「既然师弟信不过我，那便罢了。」她独自走向泉水，似乎打算自己冒险。",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "missed_chance",
+                            "description": "你因为犹豫错失了天大的机缘，只能看着师姐一人承受风险。",
+                            "rewards": { "exp": {"min": 500, "max": 1000} }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 4,
+                    "text": "大师兄怒吼：「贼子！敢染指我的女人！」他向你发起了致命一击！",
+                    "is_final": true,
+                    "battle": {
+                        "enemy_name": "暴怒的大师兄",
+                        "level_offset": 5,
+                        "stat_multiplier": 1.3
+                    },
+                    "outcomes": [
+                        {
+                            "result": "win",
+                            "condition": "battle_win",
+                            "description": "你奋力击退了大师兄！经此一役，师姐彻底对你倾心，你们共同完成了修炼，修为暴涨！",
+                            "rewards": { "exp": {"min": 20000, "max": 40000}, "attributes": {"max_hp": {"min": 200, "max": 400}, "max_mp": {"min": 100, "max": 200}} }
+                        },
+                        {
+                            "result": "lose_ntr",
+                            "condition": "battle_lose",
+                            "description": "你被大师兄一掌重创，动弹不得。此时，你信任的师姐却突然从背后偷袭，将你彻底禁锢！大师兄冷笑：「做得好。」师姐低头不敢看你，轻声道：「对不起，我别无选择，他的家族势力太大了。」随后，你被迫看着他们二人占据了整个灵泉，在你面前进行双修。你辛苦寻得的机缘，连同你的尊严，都成了他人上位的嫁衣，你的道心彻底破碎。",
+                            "rewards": { "hp_loss_percent": 0.8, "exp_loss_percent": 0.2, "attributes": { "mental_power": {"min": -50, "max": -30} } }
+                        }
+                    ]
+                }
+            ]
+        },
+        "fortune_enlightenment": {
+            "id": "fortune_enlightenment",
+            "name": "顿悟之机",
+            "type": "fortune",
+            "rarity": "rare",
+            "description": "你行至山巅，看云卷云舒，落叶归根，心中忽有所感，竟是进入了玄之又玄的顿悟状态。",
+            "min_level": 10,
+            "max_level": 999,
+            "weight": 20,
+            "rewards": {
+                "exp": {"min": 1500, "max": 4000},
+                "attributes": {
+                    "mental_power": {"min": 5, "max": 15}
+                }
+            },
+            "flavor_text": "顿悟结束，你感觉神清气爽，对大道的理解更深了一层。"
+        },
+        "choice_arrogant_youth": {
+            "id": "choice_arrogant_youth",
+            "name": "纨绔挑衅",
+            "type": "choice",
+            "rarity": "common",
+            "description": "你在坊市中闲逛，一个锦衣华服的青年不小心撞了你一下，非但不道歉，反而恶语相向：「不长眼的东西，弄脏了本少的衣服，赶紧磕头道歉，再拿一千灵石出来！」",
+            "min_level": 9,
+            "max_level": 999,
+            "weight": 45,
+            "choices": [
+                {
+                    "id": "fight",
+                    "text": "教训他一顿",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "battle_start",
+                            "description": "「给脸不要脸！」青年怒喝一声，向你发起了攻击！",
+                            "battle": {
+                                "enemy_name": "纨绔子弟",
+                                "level_offset": -1,
+                                "stat_multiplier": 0.9
+                            },
+                            "rewards_win": {
+                                "gold": {"min": 1000, "max": 2500},
+                                "exp": {"min": 300, "max": 700},
+                                "flavor_text_win": "你轻松地击败了青年，从他身上搜刮出不少灵石，扬长而去。"
+                            },
+                            "rewards_lose": {
+                                "hp_loss_percent": 0.2,
+                                "gold_loss_percent": 0.15,
+                                "flavor_text_lose": "你没打过对方，还被抢走了一些灵石，真是倒霉。"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "intimidate",
+                    "text": "展露气息，震慑对方",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.7,
+                            "result": "success",
+                            "description": "你释放出一丝强大的气息，青年脸色大变，没想到踢到了铁板，他慌忙道歉后溜之大吉。",
+                            "rewards": {
+                                "exp": {"min": 50, "max": 100}
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "fail",
+                            "description": "你的气息并未震慑住对方，他反而更加嚣张：「装模作样，给我上！」",
+                            "battle": {
+                                "enemy_name": "纨绔子弟",
+                                "level_offset": 0,
+                                "stat_multiplier": 1.0
+                            },
+                            "rewards_win": {
+                                "gold": {"min": 1200, "max": 3000},
+                                "exp": {"min": 400, "max": 800},
+                                "flavor_text_win": "虽然他有点本事，但还是被你狠狠教训了一顿。"
+                            },
+                            "rewards_lose": {
+                                "hp_loss_percent": 0.25,
+                                "gold_loss_percent": 0.2,
+                                "flavor_text_lose": "对方似乎比预想的要强，你吃了个暗亏。"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "pay",
+                    "text": "忍气吞声，破财消灾（1000灵石）",
+                    "cost": {"gold": 1000},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "paid",
+                            "description": "你不想惹麻烦，扔下灵石转身离去。背后传来青年得意的嘲笑声。",
+                            "rewards": {}
+                        }
+                    ]
+                }
+            ]
+        },
+        "choice_save_maiden": {
+            "id": "choice_save_maiden",
+            "name": "月下救美",
+            "type": "choice",
+            "rarity": "rare",
+            "description": "林间传来打斗声和女子的呼救声。你循声望去，发现几名邪修正在围攻一名身着白衣的女修，她已是强弩之末。",
+            "min_level": 18,
+            "max_level": 999,
+            "weight": 25,
+            "choices": [
+                {
+                    "id": "intervene",
+                    "text": "路见不平，拔刀相助",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "battle",
+                            "description": "你大喝一声，冲入战团！",
+                            "battle": {
+                                "enemy_name": "拦路邪修",
+                                "level_offset": 1,
+                                "stat_multiplier": 1.0
+                            },
+                            "rewards_win": {
+                                "exp": {"min": 800, "max": 2000},
+                                "gold": {"min": 500, "max": 1500},
+                                "items": [{"name": "清心丹", "count": {"min": 1, "max": 2}, "chance": 0.8}, {"name": "宗门信物", "count": {"min": 1, "max": 1}, "chance": 0.2}],
+                                "flavor_text_win": "你击退了邪修。女修感激地向你道谢，并赠予你一些丹药作为报答。"
+                            },
+                            "rewards_lose": {
+                                "hp_loss_percent": 0.4,
+                                "flavor_text_lose": "你不是邪修的对手，只能眼睁睁看着他们离去，自身也受了不轻的伤。"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "wait",
+                    "text": "静观其变，准备渔翁得利",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.5,
+                            "result": "fight_weakened",
+                            "description": "你耐心等待，邪修虽击败了女修，但也个个带伤。你决定出手！",
+                            "battle": {
+                                "enemy_name": "受伤的邪修",
+                                "level_offset": -2,
+                                "stat_multiplier": 0.7
+                            },
+                             "rewards_win": {
+                                "exp": {"min": 600, "max": 1500},
+                                "gold": {"min": 800, "max": 2000},
+                                "items": [{"name": "魔晶", "count": {"min": 1, "max": 3}, "chance": 0.5}],
+                                "flavor_text_win": "你轻松收拾了残局，收获颇丰。"
+                            },
+                            "rewards_lose": {
+                                "hp_loss_percent": 0.3,
+                                "flavor_text_lose": "没想到他们虽伤，却仍有还手之力，你被打了个措手不及。"
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "maiden_wins",
+                            "description": "就在你以为女修将败时，她突然爆发，反杀了所有邪修。她冷冷地看了一眼你藏身的方向，飘然离去。",
+                            "rewards": {}
+                        },
+                        {
+                            "chance": 0.2,
+                            "result": "all_gone",
+                            "description": "等你赶到时，战斗已经结束，现场只留下一些战斗的痕迹。",
+                            "rewards": {}
+                        }
+                    ]
+                },
+                {
+                    "id": "leave",
+                    "text": "悄悄绕路，避免麻烦",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "leave",
+                            "description": "你决定多一事不如少一事，悄悄地离开了。",
+                            "rewards": {}
+                        }
+                    ]
+                }
+            ]
+        },
+        "choice_inner_demon": {
+            "id": "choice_inner_demon",
+            "name": "心魔入侵",
+            "type": "choice",
+            "rarity": "rare",
+            "description": "你在打坐修炼时，突然感到心神不宁，一股负面情绪涌上心头，眼前出现了种种幻象。这是心魔劫！",
+            "min_level": 27,
+            "max_level": 999,
+            "weight": 15,
+            "choices": [
+                {
+                    "id": "resist",
+                    "text": "凝神对抗，稳固道心",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.7,
+                            "result": "success",
+                            "description": "你凭借坚定的道心，勘破了虚妄，心魔幻象烟消云散。",
+                            "rewards": {
+                                "exp": {"min": 1000, "max": 2500},
+                                "attributes": { "mental_power": {"min": 8, "max": 20} }
+                            }
+                        },
+                        {
+                            "chance": 0.3,
+                            "result": "fail",
+                            "description": "你抵抗失败，心神受创，好不容易才摆脱幻象。",
+                            "rewards": {
+                                "hp_loss_percent": 0.25,
+                                "mp_loss_percent": 0.25
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "guide",
+                    "text": "顺势引导，破而后立（高风险）",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 0.4,
+                            "result": "great_success",
+                            "description": "你兵行险着，将心魔化为己用，反而借此机会淬炼了神魂，修为大进！",
+                            "rewards": {
+                                "exp": {"min": 3000, "max": 6000},
+                                "attributes": { "mental_power": {"min": 20, "max": 40} }
+                            }
+                        },
+                        {
+                            "chance": 0.6,
+                            "result": "backlash",
+                            "description": "你的尝试失败了，心魔反噬，险些走火入魔！",
+                            "rewards": {
+                                "hp_loss_percent": 0.5,
+                                "exp_loss_percent": 0.08
+                            }
+                        }
+                    ]
+                },
+                {
+                    "id": "interrupt",
+                    "text": "强行中断修炼",
+                    "cost": {},
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "safe_exit",
+                            "description": "你果断地中断了修炼，虽然损失了一些修为，但避免了更严重的后果。",
+                            "rewards": {
+                                "exp_loss_percent": 0.02,
+                                "hp_loss_percent": 0.1
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        "story_broken_engagement": {
+            "id": "story_broken_engagement",
+            "name": "一纸休书",
+            "type": "story",
+            "rarity": "epic",
+            "description": "你回到凡俗界的家中，却发现气氛异常凝重。一位来自[碧云宗]的少女拿着一纸婚书，神情倨傲地看着你。「你我已是云泥之别，这婚约就此作废吧。」一位长者在她身旁，拿出一些物品：「这是宗门的一点补偿，收下吧。」",
+            "min_level": 5,
+            "max_level": 20,
+            "weight": 7,
+            "stages": [
+                {
+                    "stage_id": 1,
+                    "text": "面对这突如其来的羞辱，你将如何抉择？",
+                    "choices": [
+                        { "id": "accept_compensation", "text": "收下补偿，忍气吞声", "next_stage": 2 },
+                        { "id": "make_promise", "text": "立下三年之约", "next_stage": 3 },
+                        { "id": "tear_paper", "text": "撕毁婚书，拂袖而去", "next_stage": 4 }
+                    ]
+                },
+                {
+                    "stage_id": 2,
+                    "text": "你默默收下补偿，将这份屈辱深深记在了心底。",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "compensated",
+                            "description": "这份补偿虽然丰厚，但远不能平复你内心的波澜。",
+                            "rewards": { "gold": {"min": 2000, "max": 3000}, "items": [{"name": "培元丹", "count": {"min": 2, "max": 3}, "chance": 1.0}] }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 3,
+                    "text": "「三十年河东，三十年河西，莫欺少年穷！」你的怒吼响彻大堂。「三年之后，宗门大比，我必将你击败！」少女先是一愣，随即冷笑道：「好，我等你！」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "promise_made",
+                            "description": "屈辱化为了动力，你的道心变得更加坚定。",
+                            "rewards": { "exp": {"min": 1000, "max": 2000}, "attributes": { "mental_power": {"min": 15, "max": 25} } }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 4,
+                    "text": "你一言不发，上前夺过婚书，当着众人的面将其撕得粉碎，然后转身离去，留下震惊的众人。「你...！」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "act_resolute",
+                            "description": "你的决绝让对方感到一丝悔意。你心念通达，修为竟隐隐有所精进。",
+                            "rewards": { "exp": {"min": 1500, "max": 3000}, "attributes": { "mental_power": {"min": 20, "max": 30} } }
+                        }
+                    ]
+                }
+            ]
+        },
+        "story_soul_in_ring": {
+            "id": "story_soul_in_ring",
+            "name": "残破的古戒",
+            "type": "story",
+            "rarity": "legendary",
+            "description": "你在路边摊贩上用几块灵石淘到一枚毫不起眼的古朴戒指，当你戴上它时，一个苍老的声音在你脑海中响起：「唔……是哪个小娃娃唤醒了老夫？」",
+            "min_level": 9,
+            "max_level": 30,
+            "weight": 2,
+            "stages": [
+                {
+                    "stage_id": 1,
+                    "text": "这个神秘的声音让你心头一惊。",
+                    "choices": [
+                        { "id": "ask_who", "text": "前辈是何人？", "next_stage": 2 },
+                        { "id": "scold", "text": "装神弄鬼！", "next_stage": 3 },
+                        { "id": "remove_ring", "text": "（尝试取下戒指）", "next_stage": 4 }
+                    ]
+                },
+                {
+                    "stage_id": 2,
+                    "text": "「老夫道号‘玄尊’，曾是渡劫期大能，遭人暗算，神魂寄于此戒。看你天资尚可，若你助我，我便指点你修行，如何？」",
+                    "choices": [
+                        { "id": "accept", "text": "弟子拜见师尊！", "next_stage": 5 },
+                        { "id": "ask_condition", "text": "我需要付出什么？", "next_stage": 6 }
+                    ]
+                },
+                {
+                    "stage_id": 3,
+                    "text": "「哼，不识抬举的小鬼！」一股无形的力量冲击你的识海。",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "punished",
+                            "description": "你头痛欲裂，受到了小小的惩戒。",
+                            "rewards": { "hp_loss_percent": 0.1, "mp_loss_percent": 0.2 }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 4,
+                    "text": "你用力拉扯，却发现戒指如同长在手上一般纹丝不动。「嘿，戴上了还想取下？给老夫安分点！」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "stuck",
+                            "description": "戒指取不下来了，那个声音似乎有些不悦。",
+                            "rewards": { "hp_loss_percent": 0.05 }
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 5,
+                    "text": "「哈哈哈，好！好徒儿！为师遭逢大难，神魂虚弱。你只需日后为我寻觅滋养神魂的天材地宝即可。作为见面礼，为师便传你一篇炼神之法！」",
+                    "is_final": true,
+                    "outcomes": [
+                        {
+                            "chance": 1.0,
+                            "result": "great_reward",
+                            "description": "一股庞大的信息涌入你的脑海，你得到了上古大能的传承！",
+                            "rewards": { "exp": {"min": 10000, "max": 20000}, "attributes": { "mental_power": {"min": 50, "max": 100} }, "skills": [{"id": "soul_forge_art", "chance": 1.0}]}
+                        }
+                    ]
+                },
+                {
+                    "stage_id": 6,
+                    "text": "「你只需为我寻觅滋养神魂的天材地宝即可。机缘就在眼前，错过了可就没了。如何抉择，全在你一念之间。」",
+                    "choices": [
+                        { "id": "accept_now", "text": "我明白了，弟子愿意！", "next_stage": 5 },
+                        { "id": "hesitate", "text": "容我再想想", "next_stage": 3 }
+                    ]
+                }
+            ]
+        }
+    },
+    "trigger_settings": {
+        "cultivation_end": {
+            "base_chance": 0.15,
+            "min_duration_minutes": 30,
+            "chance_per_hour": 0.02
+        },
+        "adventure_complete": {
+            "base_chance": 0.20,
+            "route_bonus": {
+                "九死一生": 0.15,
+                "猎魔肃清": 0.10,
+                "云游四方": 0.05,
+                "巡山问道": 0.0
+            }
+        },
+        "rift_complete": {
+            "base_chance": 0.10
+        },
+        "check_in": {
+            "base_chance": 0.05
+        },
+        "wander": {
+            "base_chance": 1.0,
+            "cooldown_minutes": 60
+        }
+    },
+    "rarity_weights": {
+        "common": 100,
+        "rare": 30,
+        "epic": 8,
+        "legendary": 2
+    }
+}

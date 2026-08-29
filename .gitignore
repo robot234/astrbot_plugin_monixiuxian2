@@ -1,1 +1,40 @@
-.aider*
+# AstrBot runtime state and local backups
+plugin_data/
+plugin_backups/
+logs/
+tmp/
+backup/
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+.venv/
+env/
+.env
+.env.*
+
+# Database files and local secret material
+*.db
+*.sqlite
+*.sqlite3
+*.key
+*.pem
+*.p12
+*.pfx
+secret/
+secrets/
+credential/
+credentials/
+
+# Build and editor metadata
+build/
+dist/
+.serena/
+.vscode/
+.idea/
+.aider/

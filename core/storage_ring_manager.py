@@ -76,6 +76,10 @@ class StorageRingManager:
         """将物品存入储物戒（带事务保护）
         
         Args:
+            player: 玩家对象
+            item_name: 物品名称
+            count: 物品数量
+            silent: 是否静默模式（不返回详细消息）
             external_transaction: 如果为True，表示外部已有事务，跳过内部事务管理
         """
         can_store, reason = self.can_store_item(item_name)
@@ -84,39 +88,42 @@ class StorageRingManager:
 
         if not external_transaction:
             await self.db.conn.execute("BEGIN IMMEDIATE")
+        
         try:
             # 当外部事务存在时，直接使用传递的player对象，避免多次获取导致的覆盖问题
-            if not external_transaction:
-                fresh_player = await self.db.get_player_by_id(player.user_id)
-                if not fresh_player:
-                    if not external_transaction:
-                        await self.db.conn.rollback()
+            if external_transaction:
+                current_player = player
+            else:
+                current_player = await self.db.get_player_by_id(player.user_id)
+                if not current_player:
+                    await self.db.conn.rollback()
                     return False, "玩家不存在或已被删除"
-                player = fresh_player
-            items = player.get_storage_ring_items()
+            
+            items = current_player.get_storage_ring_items()
 
             if item_name not in items:
-                available = self.get_available_slots(player)
+                available = self.get_available_slots(current_player)
                 if available <= 0:
                     if not external_transaction:
                         await self.db.conn.rollback()
-                    capacity = self.get_ring_capacity(player.storage_ring)
+                    capacity = self.get_ring_capacity(current_player.storage_ring)
                     return False, f"储物戒已满！({capacity}/{capacity}格)"
 
             items[item_name] = items.get(item_name, 0) + count
-            player.set_storage_ring_items(items)
+            current_player.set_storage_ring_items(items)
+            
             # 当外部事务存在时，不直接更新数据库，而是让外部事务统一处理
             if not external_transaction:
-                await self.db.update_player(player)
+                await self.db.update_player(current_player)
                 await self.db.conn.commit()
 
-            capacity = self.get_ring_capacity(player.storage_ring)
-            used = self.get_used_slots(player)
+            capacity = self.get_ring_capacity(current_player.storage_ring)
+            used = self.get_used_slots(current_player)
 
             if silent:
                 return True, ""
 
-            warning = self.get_space_warning(player)
+            warning = self.get_space_warning(current_player)
             msg = f"已将【{item_name}】x{count} 存入储物戒（{used}/{capacity}格）"
             if warning:
                 msg += f"\n{warning}"
@@ -131,8 +138,12 @@ class StorageRingManager:
         """从储物戒取出物品（带事务保护）"""
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            player = await self.db.get_player_by_id(player.user_id)
-            items = player.get_storage_ring_items()
+            current_player = await self.db.get_player_by_id(player.user_id)
+            if not current_player:
+                await self.db.conn.rollback()
+                return False, "玩家不存在或已被删除"
+            
+            items = current_player.get_storage_ring_items()
 
             if item_name not in items:
                 await self.db.conn.rollback()
@@ -148,12 +159,12 @@ class StorageRingManager:
             else:
                 items[item_name] = current_count - count
 
-            player.set_storage_ring_items(items)
-            await self.db.update_player(player)
+            current_player.set_storage_ring_items(items)
+            await self.db.update_player(current_player)
             await self.db.conn.commit()
 
-            capacity = self.get_ring_capacity(player.storage_ring)
-            used = self.get_used_slots(player)
+            capacity = self.get_ring_capacity(current_player.storage_ring)
+            used = self.get_used_slots(current_player)
             return True, f"已从储物戒取出【{item_name}】x{count}（{used}/{capacity}格）"
         except Exception:
             await self.db.conn.rollback()
@@ -163,8 +174,12 @@ class StorageRingManager:
         """丢弃储物戒中的物品（带事务保护）"""
         await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            player = await self.db.get_player_by_id(player.user_id)
-            items = player.get_storage_ring_items()
+            current_player = await self.db.get_player_by_id(player.user_id)
+            if not current_player:
+                await self.db.conn.rollback()
+                return False, "玩家不存在或已被删除"
+            
+            items = current_player.get_storage_ring_items()
 
             if item_name not in items:
                 await self.db.conn.rollback()
@@ -182,12 +197,12 @@ class StorageRingManager:
                 items[item_name] = current_count - count
                 discard_count = count
 
-            player.set_storage_ring_items(items)
-            await self.db.update_player(player)
+            current_player.set_storage_ring_items(items)
+            await self.db.update_player(current_player)
             await self.db.conn.commit()
 
-            capacity = self.get_ring_capacity(player.storage_ring)
-            used = self.get_used_slots(player)
+            capacity = self.get_ring_capacity(current_player.storage_ring)
+            used = self.get_used_slots(current_player)
             return True, f"已丢弃【{item_name}】x{discard_count}（{used}/{capacity}格）"
         except Exception:
             await self.db.conn.rollback()

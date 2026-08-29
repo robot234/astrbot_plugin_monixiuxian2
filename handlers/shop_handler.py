@@ -6,6 +6,7 @@ from astrbot.api.event import AstrMessageEvent
 from astrbot.api import AstrBotConfig, logger
 from ..data import DataBase
 from ..core import ShopManager, EquipmentManager, PillManager, StorageRingManager
+from ..core.shop_manager import get_shop_config_value, get_treasure_pavilion_counts
 from ..core.skill_manager import SkillManager
 from ..models import Player
 from ..config_manager import ConfigManager
@@ -52,7 +53,7 @@ class ShopHandler:
             updated = self.shop_manager.ensure_items_have_stock(current_items)
             if updated:
                 await self.db.update_shop_data(pavilion_id, last_refresh_time, current_items)
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = get_shop_config_value(self.config, "PAVILION_REFRESH_HOURS", 1)
         if not current_items or self.shop_manager.should_refresh_shop(last_refresh_time, refresh_hours):
             new_items = self.shop_manager.generate_pavilion_items(item_getter, count)
             await self.db.update_shop_data(pavilion_id, int(time.time()), new_items)
@@ -65,7 +66,7 @@ class ShopHandler:
             updated = self.shop_manager.ensure_items_have_stock(current_items)
             if updated:
                 await self.db.update_shop_data(pavilion_id, last_refresh_time, current_items)
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = get_shop_config_value(self.config, "PAVILION_REFRESH_HOURS", 1)
         if not current_items or self.shop_manager.should_refresh_shop(last_refresh_time, refresh_hours):
             new_items = self._generate_treasure_pavilion_items()
             await self.db.update_shop_data(pavilion_id, int(time.time()), new_items)
@@ -77,7 +78,8 @@ class ShopHandler:
         items = []
         
         # 1. 添加技能书（从 skills.json）
-        skill_count = self.config.get("TREASURE_PAVILION_SKILL_COUNT", 8)
+        pavilion_counts = get_treasure_pavilion_counts(self.config)
+        skill_count = pavilion_counts["skill"]
         skills_data = self.config_manager.get_all_skills()
         
         if skills_data:
@@ -118,7 +120,7 @@ class ShopHandler:
                 })
         
         # 2. 添加功法（从 techniques.json）
-        technique_count = self.config.get("TREASURE_PAVILION_TECHNIQUE_COUNT", 6)
+        technique_count = pavilion_counts["technique"]
         techniques_data = self.config_manager.get_all_techniques()
         
         if techniques_data:
@@ -157,7 +159,7 @@ class ShopHandler:
                 })
         
         # 3. 添加材料（从 items.json 中筛选）
-        material_count = self.config.get("TREASURE_PAVILION_MATERIAL_COUNT", 5)
+        material_count = pavilion_counts["material"]
         materials = []
         for name, item in self.config_manager.items_data.items():
             if isinstance(item, dict) and item.get('type') == 'material':
@@ -220,25 +222,25 @@ class ShopHandler:
 
     async def handle_pill_pavilion(self, event: AstrMessageEvent):
         """处理丹阁命令 - 展示丹药列表"""
-        count = self.config.get("PAVILION_PILL_COUNT", 20)
+        count = get_shop_config_value(self.config, "PAVILION_PILL_COUNT", 20)
         await self._ensure_pavilion_refreshed("pill_pavilion", self.shop_manager.get_pills_for_display, count)
         last_refresh, items = await self.db.get_shop_data("pill_pavilion")
         if not items:
             yield event.plain_result("丹阁暂无丹药出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = get_shop_config_value(self.config, "PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("丹阁", items, refresh_hours, last_refresh)
         yield event.plain_result(display)
 
     async def handle_weapon_pavilion(self, event: AstrMessageEvent):
         """处理器阁命令 - 展示武器列表"""
-        count = self.config.get("PAVILION_WEAPON_COUNT", 20)
-        await self._ensure_pavilion_refreshed("weapon_pavilion", self.shop_manager.get_weapons_for_display, count)
+        count = get_shop_config_value(self.config, "PAVILION_WEAPON_COUNT", 20)
+        await self._ensure_pavilion_refreshed("weapon_pavilion", self.shop_manager.get_equipment_for_display, count)
         last_refresh, items = await self.db.get_shop_data("weapon_pavilion")
         if not items:
             yield event.plain_result("器阁暂无武器出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = get_shop_config_value(self.config, "PAVILION_REFRESH_HOURS", 1)
         display = self.shop_manager.format_pavilion_display("器阁", items, refresh_hours, last_refresh)
         yield event.plain_result(display)
 
@@ -249,7 +251,7 @@ class ShopHandler:
         if not items:
             yield event.plain_result("百宝阁暂无物品出售。")
             return
-        refresh_hours = self.config.get("PAVILION_REFRESH_HOURS", 1)
+        refresh_hours = get_shop_config_value(self.config, "PAVILION_REFRESH_HOURS", 1)
         display = self._format_treasure_pavilion_display(items, refresh_hours, last_refresh)
         yield event.plain_result(display)
 

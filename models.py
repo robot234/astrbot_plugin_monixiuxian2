@@ -13,7 +13,7 @@ class Item:
 
     item_id: str  # 物品唯一ID
     name: str  # 物品名称
-    item_type: str  # 装备类型：weapon（武器）、armor（防具）、main_technique（主修心法）、technique（功法）
+    item_type: str  # 装备类型：weapon（武器）、armor（防具）、accessory（饰品）、main_technique（主修心法）、technique（功法）
     description: str = ""  # 物品描述
 
     # 装备品级相关
@@ -94,6 +94,7 @@ class Player:
     weapon: str = ""  # 武器
     armor: str = ""  # 防具
     main_technique: str = ""  # 主修心法
+    accessory: str = ""  # 饰品
     techniques: str = "[]"  # 功法列表（JSON字符串，最多3个）
 
     # 战斗属性（HP/MP/ATK系统）
@@ -151,6 +152,11 @@ class Player:
     # 技能系统字段
     learned_skills: str = "[]"  # 已学会的技能ID列表（JSON字符串）
     equipped_skills: str = "[]"  # 已装备的技能ID列表（JSON字符串，最多2个）
+
+    # 道侣系统字段
+    partner_id: str = ""  # 道侣的user_id（空字符串表示无道侣）
+    partner_bindtime: int = 0  # 结为道侣的时间戳
+    partner_intimacy: int = 0  # 亲密度
 
     def get_level(self, config_manager: "ConfigManager") -> str:
         """获取境界名称"""
@@ -242,6 +248,54 @@ class Player:
     def set_equipped_skills(self, skills: List[str]):
         """设置已装备的技能ID列表"""
         self.equipped_skills = json.dumps(skills, ensure_ascii=False)
+
+    def has_partner(self) -> bool:
+        """是否有道侣"""
+        return bool(self.partner_id)
+
+    def get_intimacy_level(self) -> int:
+        """获取亲密度等级（1-5）"""
+        if self.partner_intimacy >= 30000:
+            return 5
+        elif self.partner_intimacy >= 15000:
+            return 4
+        elif self.partner_intimacy >= 5000:
+            return 3
+        elif self.partner_intimacy >= 1000:
+            return 2
+        else:
+            return 1
+
+    def get_intimacy_title(self) -> str:
+        """获取亲密度称号"""
+        titles = {
+            1: "初识",
+            2: "相知",
+            3: "情深",
+            4: "心心相印",
+            5: "道侣双成"
+        }
+        return titles.get(self.get_intimacy_level(), "初识")
+
+    def get_partner_bonuses(self) -> dict:
+        """获取道侣加成"""
+        if not self.has_partner():
+            return {
+                "dual_cultivation_bonus": 0.0,
+                "cultivation_efficiency": 0.0,
+                "combat_stats_bonus": 0.0,
+                "has_bond_skill": False
+            }
+        
+        level = self.get_intimacy_level()
+        bonuses = {
+            1: {"dual_cultivation_bonus": 0.05, "cultivation_efficiency": 0.0, "combat_stats_bonus": 0.0, "has_bond_skill": False},
+            2: {"dual_cultivation_bonus": 0.10, "cultivation_efficiency": 0.05, "combat_stats_bonus": 0.0, "has_bond_skill": False},
+            3: {"dual_cultivation_bonus": 0.15, "cultivation_efficiency": 0.10, "combat_stats_bonus": 0.03, "has_bond_skill": False},
+            4: {"dual_cultivation_bonus": 0.20, "cultivation_efficiency": 0.15, "combat_stats_bonus": 0.05, "has_bond_skill": False},
+            5: {"dual_cultivation_bonus": 0.25, "cultivation_efficiency": 0.20, "combat_stats_bonus": 0.08, "has_bond_skill": True},
+        }
+        return bonuses.get(level, bonuses[1])
 
     def get_total_attributes(self, equipped_items: List[Item], pill_multipliers: Optional[dict] = None) -> dict:
         """计算包含装备加成和丹药效果的总属性

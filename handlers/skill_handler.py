@@ -20,7 +20,7 @@ class SkillHandler:
         self.skill_manager = SkillManager(db, config_manager)
     
     @player_required
-    async def handle_skill_list(self, player: Player, event: AstrMessageEvent) -> str:
+    async def handle_skill_list(self, player: Player, event: AstrMessageEvent):
         """处理 '技能列表' 命令
         
         显示已学技能和已装备技能
@@ -96,19 +96,21 @@ class SkillHandler:
         lines.append("  卸下技能 <名称> - 卸下技能")
         lines.append("  技能信息 <名称> - 查看详情")
         
-        return "\n".join(lines)
+        yield event.plain_result("\n".join(lines))
     
     @player_required
     async def handle_learn_skill(self, player: Player, event: AstrMessageEvent,
-                                  skill_name: str) -> str:
+                                  skill_name: str):
         """处理 '学习技能 <名称>' 命令"""
         if not skill_name:
-            return "❌ 请指定要学习的技能名称！\n用法：学习技能 <技能名称>"
+            yield event.plain_result("❌ 请指定要学习的技能名称！\n用法：学习技能 <技能名称>")
+            return
         
         # 根据名称查找技能
         skill_config = self.skill_manager.get_skill_by_name(skill_name)
         if not skill_config:
-            return f"❌ 未找到名为【{skill_name}】的技能！"
+            yield event.plain_result(f"❌ 未找到名为【{skill_name}】的技能！")
+            return
         
         skill_id = skill_config.get("id", "")
         
@@ -118,7 +120,7 @@ class SkillHandler:
         if success:
             # 获取技能详情
             skill_display = self.skill_manager.get_skill_display(skill_config)
-            return (
+            yield event.plain_result(
                 f"✨ 学习成功！\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"{skill_display}\n"
@@ -126,14 +128,15 @@ class SkillHandler:
                 f"💡 使用 '装备技能 {skill_name}' 来装备此技能"
             )
         else:
-            return f"❌ {message}"
+            yield event.plain_result(f"❌ {message}")
     
     @player_required
     async def handle_equip_skill(self, player: Player, event: AstrMessageEvent,
-                                  skill_name: str) -> str:
+                                  skill_name: str):
         """处理 '装备技能 <名称>' 命令"""
         if not skill_name:
-            return "❌ 请指定要装备的技能名称！\n用法：装备技能 <技能名称>"
+            yield event.plain_result("❌ 请指定要装备的技能名称！\n用法：装备技能 <技能名称>")
+            return
         
         # 尝试装备技能
         success, message = await self.skill_manager.equip_skill_by_name(player, skill_name)
@@ -143,7 +146,7 @@ class SkillHandler:
             equipped_configs = self.skill_manager.get_equipped_skill_configs(player)
             equipped_names = [s.get("name", "未知") for s in equipped_configs]
             
-            return (
+            yield event.plain_result(
                 f"✅ 成功装备技能【{skill_name}】！\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"⚔️ 当前装备技能：\n"
@@ -152,14 +155,15 @@ class SkillHandler:
                 f"💡 战斗中将自动使用已装备的技能"
             )
         else:
-            return f"❌ {message}"
+            yield event.plain_result(f"❌ {message}")
     
     @player_required
     async def handle_unequip_skill(self, player: Player, event: AstrMessageEvent,
-                                    skill_name: str) -> str:
+                                    skill_name: str):
         """处理 '卸下技能 <名称>' 命令"""
         if not skill_name:
-            return "❌ 请指定要卸下的技能名称！\n用法：卸下技能 <技能名称>"
+            yield event.plain_result("❌ 请指定要卸下的技能名称！\n用法：卸下技能 <技能名称>")
+            return
         
         # 尝试卸下技能
         success, message = await self.skill_manager.unequip_skill_by_name(player, skill_name)
@@ -169,7 +173,7 @@ class SkillHandler:
             equipped_configs = self.skill_manager.get_equipped_skill_configs(player)
             equipped_names = [s.get("name", "未知") for s in equipped_configs]
             
-            return (
+            yield event.plain_result(
                 f"✅ 成功卸下技能【{skill_name}】！\n"
                 f"━━━━━━━━━━━━━━━\n"
                 f"⚔️ 当前装备技能：\n"
@@ -177,20 +181,22 @@ class SkillHandler:
                 f"━━━━━━━━━━━━━━━"
             )
         else:
-            return f"❌ {message}"
+            yield event.plain_result(f"❌ {message}")
     
-    async def handle_skill_info(self, event: AstrMessageEvent, skill_name: str) -> str:
+    async def handle_skill_info(self, event: AstrMessageEvent, skill_name: str):
         """处理 '技能信息 <名称>' 命令
         
         显示技能详细信息（无需登录）
         """
         if not skill_name:
-            return "❌ 请指定要查看的技能名称！\n用法：技能信息 <技能名称>"
+            yield event.plain_result("❌ 请指定要查看的技能名称！\n用法：技能信息 <技能名称>")
+            return
         
         # 根据名称查找技能
         skill_config = self.skill_manager.get_skill_by_name(skill_name)
         if not skill_config:
-            return f"❌ 未找到名为【{skill_name}】的技能！"
+            yield event.plain_result(f"❌ 未找到名为【{skill_name}】的技能！")
+            return
         
         # 生成技能详细信息
         lines = [
@@ -283,10 +289,10 @@ class SkillHandler:
         
         lines.append("━━━━━━━━━━━━━━━")
         
-        return "\n".join(lines)
+        yield event.plain_result("\n".join(lines))
     
     @player_required
-    async def handle_available_skills(self, player: Player, event: AstrMessageEvent) -> str:
+    async def handle_available_skills(self, player: Player, event: AstrMessageEvent):
         """处理 '可学技能' 命令
         
         显示玩家当前可以学习的技能列表
@@ -294,13 +300,14 @@ class SkillHandler:
         available_skills = self.skill_manager.get_available_skills_for_player(player)
         
         if not available_skills:
-            return (
+            yield event.plain_result(
                 "📚 【可学技能】\n"
                 "━━━━━━━━━━━━━━━\n"
                 "当前没有可学习的新技能\n"
                 "━━━━━━━━━━━━━━━\n"
                 "💡 提升境界可解锁更多技能"
             )
+            return
         
         lines = [
             "📚 【可学技能】",
@@ -355,7 +362,7 @@ class SkillHandler:
         lines.append(f"💰 当前灵石：{player.gold:,}")
         lines.append("💡 使用 '学习技能 <名称>' 来学习")
         
-        return "\n".join(lines)
+        yield event.plain_result("\n".join(lines))
     
     def _get_effect_description(self, effect_type: str, value: float, duration: int) -> str:
         """获取效果描述文本"""
