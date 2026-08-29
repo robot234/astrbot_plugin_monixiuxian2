@@ -1,11 +1,32 @@
 # data/migration.py
 
 import aiosqlite
+from contextlib import asynccontextmanager
 from typing import Dict, Callable, Awaitable
 from astrbot.api import logger
 from ..config_manager import ConfigManager
 
 LATEST_DB_VERSION = 23  # v23: 新增饰品装备位
+
+# ``_create_all_tables_v2`` creates the complete current player row even
+# though the historical migration recorded only version 2.  A database that
+# claims to be at v2 is safe to fast-forward only when this full row shape is
+# already present; ``CREATE TABLE IF NOT EXISTS`` cannot add missing columns.
+_V2_PLAYER_COLUMNS = {
+    "user_id", "user_name", "level_index", "cultivation_type", "experience",
+    "gold", "hp", "mp", "atk", "atkpractice", "sect_id", "sect_position",
+    "sect_contribution", "sect_task", "sect_elixir_get", "blessed_spot_flag",
+    "blessed_spot_name", "level_up_rate", "spiritual_root", "lifespan", "state",
+    "cultivation_start_time", "last_check_in_date", "spiritual_qi", "max_spiritual_qi",
+    "blood_qi", "max_blood_qi", "magic_damage", "physical_damage", "magic_defense",
+    "physical_defense", "mental_power", "weapon", "armor", "main_technique",
+    "accessory", "techniques", "active_pill_effects", "permanent_pill_gains",
+    "has_resurrection_pill", "has_debuff_shield", "pills_inventory", "storage_ring",
+    "storage_ring_items", "daily_pill_usage", "last_daily_reset", "max_hp", "max_mp",
+    "speed", "critical_rate", "critical_damage", "hit_rate", "dodge_rate",
+    "learned_skills", "equipped_skills", "partner_id", "partner_bindtime",
+    "partner_intimacy",
+}
 
 MIGRATION_TASKS: Dict[int, Callable[[aiosqlite.Connection, ConfigManager], Awaitable[None]]] = {}
 
@@ -28,11 +49,10 @@ class MigrationManager:
         async with self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='db_info'") as cursor:
             if await cursor.fetchone() is None:
                 logger.info("未检测到数据库版本，将进行全新安装...")
-                await self.conn.execute("BEGIN")
-                # 使用最新的建表函数
-                await _create_all_tables_v2(self.conn)
-                await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
-                await self.conn.commit()
+                async with _transaction(self.conn):
+                    # 使用最新的建表函数
+                    await _create_all_tables_v2(self.conn)
+                    await self.conn.execute("INSERT INTO db_info (version) VALUES (?)", (LATEST_DB_VERSION,))
                 logger.info(f"数据库已初始化到最新版本: v{LATEST_DB_VERSION}")
                 return
 
@@ -40,26 +60,83 @@ class MigrationManager:
             row = await cursor.fetchone()
             current_version = row[0] if row else 0
 
+        if not isinstance(current_version, int) or current_version < 0:
+            raise ValueError(f"数据库版本无效: {current_version!r}")
+        if current_version > LATEST_DB_VERSION:
+            raise ValueError(
+                f"数据库版本 v{current_version} 高于当前支持的 v{LATEST_DB_VERSION}，已停止迁移"
+            )
+
         logger.info(f"当前数据库版本: v{current_version}, 最新版本: v{LATEST_DB_VERSION}")
         if current_version < LATEST_DB_VERSION:
             logger.info("检测到数据库需要升级...")
+
+            # Historical v2 already created the complete schema.  A database
+            # left at version 2 can therefore contain all v3-v23 columns even
+            # though the old migrator stopped before recording those versions.
+            # Replaying the historical ALTER steps would duplicate columns and
+            # abort the migration; validate that shape and advance atomically.
+            if current_version == 2:
+                columns = await _column_names(self.conn, "players")
+                missing = sorted(_V2_PLAYER_COLUMNS - columns)
+                if missing:
+                    raise RuntimeError(
+                        "v2数据库schema不完整，拒绝跳过历史迁移；缺少字段: "
+                        + ", ".join(missing)
+                    )
+                async with _transaction(self.conn):
+                    await _create_all_tables_v2(self.conn)
+                    await self.conn.execute(
+                        "UPDATE db_info SET version = ?", (LATEST_DB_VERSION,)
+                    )
+                logger.info(f"数据库已从完整v2 schema安全升级到最新版本: v{LATEST_DB_VERSION}")
+                return
+
             for version in sorted(MIGRATION_TASKS.keys()):
                 if current_version < version:
                     logger.info(f"正在执行数据库升级: v{current_version} -> v{version} ...")
-                    await self.conn.execute("BEGIN")
-                    try:
+                    async with _transaction(self.conn):
                         await MIGRATION_TASKS[version](self.conn, self.config_manager)
-                        await self.conn.execute("UPDATE db_info SET version = ?", (version,))
-                        await self.conn.commit()
-                        current_version = version
-                        logger.info(f"数据库升级成功: v{version}")
-                    except Exception as e:
-                        await self.conn.rollback()
-                        logger.error(f"数据库升级失败: v{version}. 错误: {str(e)}")
-                        raise
+                        # v2 creates the complete current schema.  Running the
+                        # historical v3..v23 ALTER steps afterwards would
+                        # duplicate every column, so record the schema's
+                        # actual version in one atomic update.
+                        target_version = LATEST_DB_VERSION if version == 2 else version
+                        await self.conn.execute("UPDATE db_info SET version = ?", (target_version,))
+                    current_version = target_version
+                    logger.info(f"数据库升级成功: v{target_version}")
+                    if version == 2:
+                        break
             logger.info(f"数据库已升级到最新版本: v{LATEST_DB_VERSION}")
         else:
             logger.info("数据库已是最新版本，无需升级。")
+
+
+@asynccontextmanager
+async def _transaction(conn):
+    """Use the task-owned gate when available, with a raw-connection fallback."""
+    if hasattr(conn, "transaction"):
+        async with conn.transaction(immediate=False):
+            yield
+        return
+
+    await conn.execute("BEGIN")
+    try:
+        yield
+    except BaseException:
+        await conn.rollback()
+        raise
+    else:
+        await conn.commit()
+
+
+async def _column_names(conn, table_name: str) -> set[str]:
+    """Read a table's columns without binding unsupported PRAGMA parameters."""
+    if not table_name.replace("_", "").isalnum():
+        raise ValueError(f"invalid table name: {table_name!r}")
+    async with conn.execute(f'PRAGMA table_info("{table_name}")') as cursor:
+        rows = await cursor.fetchall()
+    return {row[1] if not isinstance(row, dict) else row["name"] for row in rows}
 
 async def _create_all_tables_v1(conn: aiosqlite.Connection):
     """创建所有表 - v1，只保留玩家基础信息"""
@@ -99,9 +176,48 @@ async def _migrate_to_v2(conn: aiosqlite.Connection, config_manager: ConfigManag
     """迁移到v2 - 新属性系统（灵修/体修）"""
     logger.info("开始迁移到v2：新属性系统")
 
-    # 删除旧表并创建新表
-    await conn.execute("DROP TABLE IF EXISTS players")
+    legacy_columns = await _column_names(conn, "players")
+    if "user_id" not in legacy_columns:
+        raise RuntimeError("v2迁移失败：旧players表不存在或缺少user_id字段")
+
+    # Keep the old table until the replacement has been populated.  The old
+    # v1 schema used ``attack``, ``defense`` and ``spiritual_power`` names;
+    # map those values into both the legacy-compatible and new stat columns.
+    await conn.execute("DROP INDEX IF EXISTS idx_player_level")
+    await conn.execute("ALTER TABLE players RENAME TO players_v1_backup")
     await _create_all_tables_v2(conn)
+
+    def value(column: str, default: str = "0") -> str:
+        return f'COALESCE("{column}", {default})' if column in legacy_columns else default
+
+    level = value("level_index")
+    spiritual_root = value("spiritual_root", "'未知'")
+    experience = value("experience")
+    gold = value("gold")
+    state = value("state", "'空闲'")
+    hp = value("hp", "0")
+    max_hp = value("max_hp", "100")
+    attack = value("attack", "10")
+    defense = value("defense", "5")
+    spiritual_power = value("spiritual_power", "100")
+    mental_power = value("mental_power", "100")
+    await conn.execute(
+        f"""
+        INSERT INTO players (
+            user_id, level_index, spiritual_root, experience, gold, state,
+            hp, max_hp, mp, atk, spiritual_qi, max_spiritual_qi,
+            magic_damage, physical_damage, magic_defense, physical_defense,
+            mental_power
+        )
+        SELECT
+            "user_id", {level}, {spiritual_root}, {experience}, {gold}, {state},
+            {hp}, {max_hp}, {spiritual_power}, {attack}, {spiritual_power},
+            {spiritual_power}, {attack}, {attack}, {defense}, {defense},
+            {mental_power}
+        FROM players_v1_backup
+        """
+    )
+    await conn.execute("DROP TABLE players_v1_backup")
 
     logger.info("v2迁移完成：新属性系统")
 
@@ -111,7 +227,11 @@ async def _migrate_to_v3(conn: aiosqlite.Connection, config_manager: ConfigManag
     logger.info("开始迁移到v3：添加闭关系统")
 
     # 添加 cultivation_start_time 字段
-    await conn.execute("ALTER TABLE players ADD COLUMN cultivation_start_time INTEGER NOT NULL DEFAULT 0")
+    columns = await _column_names(conn, "players")
+    if "user_id" not in columns:
+        raise RuntimeError("v3迁移失败：players表不存在或缺少user_id字段")
+    if "cultivation_start_time" not in columns:
+        await conn.execute("ALTER TABLE players ADD COLUMN cultivation_start_time INTEGER NOT NULL DEFAULT 0")
 
     logger.info("v3迁移完成：闭关系统")
 
@@ -797,11 +917,11 @@ async def _migrate_to_v13(conn: aiosqlite.Connection, config_manager: ConfigMana
     logger.info("添加每日限制字段...")
     try:
         await conn.execute("ALTER TABLE players ADD COLUMN daily_pill_usage TEXT NOT NULL DEFAULT '{}'")
-    except:
+    except Exception:
         pass  # 字段可能已存在
     try:
         await conn.execute("ALTER TABLE players ADD COLUMN last_daily_reset TEXT NOT NULL DEFAULT ''")
-    except:
+    except Exception:
         pass
     
     logger.info("v13迁移完成：Phase 1 功能增强")
@@ -865,10 +985,9 @@ async def _migrate_to_v15(conn: aiosqlite.Connection, config_manager: ConfigMana
                 "INSERT OR IGNORE INTO rifts (rift_id, rift_name, rift_level, required_level, rewards) VALUES (?, ?, ?, ?, ?)",
                 rift
             )
-        except:
+        except Exception:
             pass
     
-    await conn.commit()
     logger.info("v15迁移完成：已添加5个默认秘境")
 
 
@@ -942,7 +1061,6 @@ async def _migrate_to_v16(conn: aiosqlite.Connection, config_manager: ConfigMana
             eye
         )
     
-    await conn.commit()
     logger.info("v16迁移完成：Phase 4 扩展功能（洞天福地、灵田、双修、灵眼）")
 
 
@@ -967,7 +1085,6 @@ async def _migrate_to_v17(conn: aiosqlite.Connection, config_manager: ConfigMana
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_expires ON pending_gifts(expires_at)")
     
-    await conn.commit()
     logger.info("v17迁移完成：赠予请求持久化")
 
 
@@ -1019,7 +1136,6 @@ async def _migrate_to_v18(conn: aiosqlite.Connection, config_manager: ConfigMana
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_user ON bank_transactions(user_id)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_time ON bank_transactions(created_at)")
     
-    await conn.commit()
     logger.info("v18迁移完成：银行贷款与交易流水系统")
 
 
@@ -1071,7 +1187,6 @@ async def _migrate_to_v19(conn: aiosqlite.Connection, config_manager: ConfigMana
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_user ON bank_transactions(user_id)")
     await conn.execute("CREATE INDEX IF NOT EXISTS idx_bank_trans_time ON bank_transactions(created_at)")
     
-    await conn.commit()
     logger.info("v19迁移完成：银行系统表完整性修复")
 
 
@@ -1115,7 +1230,6 @@ async def _migrate_to_v20(conn: aiosqlite.Connection, config_manager: ConfigMana
         )
     """)
     
-    await conn.commit()
     logger.info("v20迁移完成：用户CD表添加额外数据字段")
 
 
@@ -1171,7 +1285,6 @@ async def _migrate_to_v21(conn: aiosqlite.Connection, config_manager: ConfigMana
     except Exception as e:
         logger.warning(f"添加equipped_skills字段失败（可能已存在）: {e}")
     
-    await conn.commit()
     logger.info("v21迁移完成：战斗属性和技能系统字段已添加")
 
 
@@ -1195,7 +1308,6 @@ async def _migrate_to_v22(conn: aiosqlite.Connection, config_manager: ConfigMana
     except Exception as e:
         logger.warning(f"添加partner_intimacy字段失败（可能已存在）: {e}")
 
-    await conn.commit()
     logger.info("v22迁移完成：道侣系统字段已添加")
 
 
@@ -1204,10 +1316,9 @@ async def _migrate_to_v23(conn: aiosqlite.Connection, config_manager: ConfigMana
     """迁移到v23 - 新增饰品装备位"""
     logger.info("开始迁移到v23：新增饰品装备位字段")
 
-    try:
+    columns = await _column_names(conn, "players")
+    if "user_id" not in columns:
+        raise RuntimeError("v23迁移失败：players表不存在或缺少user_id字段")
+    if "accessory" not in columns:
         await conn.execute("ALTER TABLE players ADD COLUMN accessory TEXT NOT NULL DEFAULT ''")
-    except Exception as e:
-        logger.warning(f"添加accessory字段失败（可能已存在）: {e}")
-
-    await conn.commit()
     logger.info("v23迁移完成：饰品装备位字段已添加")

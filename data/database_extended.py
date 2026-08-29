@@ -475,20 +475,22 @@ class DatabaseExtended:
                 return {"balance": row[0], "last_interest_time": row[1]}
             return None
     
-    async def update_bank_account(self, user_id: str, balance: int, last_interest_time: int):
+    async def update_bank_account(self, user_id: str, balance: int, last_interest_time: int, *, commit: bool = True):
         """更新或创建银行账户"""
         await self.conn.execute(
             """
             INSERT INTO bank_accounts (user_id, balance, last_interest_time)
             VALUES (?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET 
+            ON CONFLICT(user_id) DO UPDATE SET
                 balance = excluded.balance,
                 last_interest_time = excluded.last_interest_time
             """,
-            (user_id, balance, last_interest_time)
+            (user_id, balance, last_interest_time),
+            commit=commit,
         )
-        await self.conn.commit()
-    
+        if commit:
+            await self.conn.commit()
+
     # ===== Phase 2: 悬赏令系统 CRUD =====
     
     async def ensure_bounty_tables(self):
@@ -604,7 +606,7 @@ class DatabaseExtended:
     
     # ===== 赠予请求系统 CRUD =====
     
-    async def ensure_pending_gifts_table(self):
+    async def ensure_pending_gifts_table(self, *, commit: bool = True):
         """确保赠予请求表存在并包含source_type字段"""
         # 检查表是否存在
         async with self.conn.execute(
@@ -626,9 +628,13 @@ class DatabaseExtended:
                     created_at INTEGER NOT NULL,
                     expires_at INTEGER NOT NULL
                 )
-            """)
-            await self.conn.execute("CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)")
-            await self.conn.commit()
+            """, commit=commit)
+            await self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pending_gifts_receiver ON pending_gifts(receiver_id)",
+                commit=commit,
+            )
+            if commit:
+                await self.conn.commit()
         else:
             # 检查是否有source_type字段
             async with self.conn.execute("PRAGMA table_info(pending_gifts)") as cursor:
@@ -638,13 +644,15 @@ class DatabaseExtended:
             if 'source_type' not in column_names:
                 # 添加source_type字段
                 await self.conn.execute(
-                    "ALTER TABLE pending_gifts ADD COLUMN source_type TEXT NOT NULL DEFAULT 'storage'"
+                    "ALTER TABLE pending_gifts ADD COLUMN source_type TEXT NOT NULL DEFAULT 'storage'",
+                    commit=commit,
                 )
-                await self.conn.commit()
+                if commit:
+                    await self.conn.commit()
     
     async def create_pending_gift(self, receiver_id: str, sender_id: str, sender_name: str,
                                    item_name: str, count: int, expires_hours: int = 24,
-                                   source_type: str = "storage") -> int:
+                                   source_type: str = "storage", *, commit: bool = True) -> int:
         """创建赠予请求
         
         Args:
@@ -662,24 +670,25 @@ class DatabaseExtended:
         import time
         
         # 确保表结构正确
-        await self.ensure_pending_gifts_table()
+        await self.ensure_pending_gifts_table(commit=commit)
         
         now = int(time.time())
         expires_at = now + expires_hours * 3600
         
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             """
             INSERT INTO pending_gifts (
                 receiver_id, sender_id, sender_name, item_name, count, source_type, created_at, expires_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (receiver_id, sender_id, sender_name, item_name, count, source_type, now, expires_at)
+            (receiver_id, sender_id, sender_name, item_name, count, source_type, now, expires_at),
+            commit=commit,
         )
-        await self.conn.commit()
-        
-        async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else None
+        if cursor.rowcount != 1:
+            raise RuntimeError("failed to create pending gift")
+        if commit:
+            await self.conn.commit()
+        return cursor.lastrowid
     
     async def get_pending_gift(self, receiver_id: str) -> Optional[dict]:
         """获取接收者的待处理赠予请求（最新的一个）"""
@@ -689,9 +698,6 @@ class DatabaseExtended:
         await self.ensure_pending_gifts_table()
         
         now = int(time.time())
-        
-        # 先清理过期的请求
-        await self.cleanup_expired_gifts()
         
         async with self.conn.execute(
             """
@@ -752,31 +758,40 @@ class DatabaseExtended:
                 for row in rows
             ]
     
-    async def delete_pending_gift(self, gift_id: int):
+    async def delete_pending_gift(self, gift_id: int, *, commit: bool = True):
         """删除赠予请求"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             "DELETE FROM pending_gifts WHERE id = ?",
-            (gift_id,)
+            (gift_id,),
+            commit=commit,
         )
-        await self.conn.commit()
-    
-    async def delete_pending_gift_by_receiver(self, receiver_id: str):
+        if commit:
+            await self.conn.commit()
+        return cursor.rowcount
+
+    async def delete_pending_gift_by_receiver(self, receiver_id: str, *, commit: bool = True):
         """删除接收者的所有赠予请求"""
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             "DELETE FROM pending_gifts WHERE receiver_id = ?",
-            (receiver_id,)
+            (receiver_id,),
+            commit=commit,
         )
-        await self.conn.commit()
-    
-    async def cleanup_expired_gifts(self):
+        if commit:
+            await self.conn.commit()
+        return cursor.rowcount
+
+    async def cleanup_expired_gifts(self, *, commit: bool = True):
         """清理过期的赠予请求"""
         import time
         now = int(time.time())
-        await self.conn.execute(
+        cursor = await self.conn.execute(
             "DELETE FROM pending_gifts WHERE expires_at < ?",
-            (now,)
+            (now,),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
+        return cursor.rowcount
     
     # ===== Phase 3: 银行贷款系统 CRUD =====
     
@@ -801,34 +816,41 @@ class DatabaseExtended:
                 }
             return None
     
-    async def create_loan(self, user_id: str, principal: int, interest_rate: float, 
-                          borrowed_at: int, due_at: int, loan_type: str = "normal") -> int:
+    async def create_loan(self, user_id: str, principal: int, interest_rate: float,
+                          borrowed_at: int, due_at: int, loan_type: str = "normal",
+                          *, commit: bool = True) -> int:
         """创建贷款记录"""
         await self.conn.execute(
             """INSERT INTO bank_loans (user_id, principal, interest_rate, borrowed_at, due_at, status, loan_type)
                VALUES (?, ?, ?, ?, ?, 'active', ?)""",
-            (user_id, principal, interest_rate, borrowed_at, due_at, loan_type)
+            (user_id, principal, interest_rate, borrowed_at, due_at, loan_type),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
         async with self.conn.execute("SELECT last_insert_rowid()") as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
     
-    async def close_loan(self, loan_id: int):
+    async def close_loan(self, loan_id: int, *, commit: bool = True):
         """关闭贷款（标记为已还清）"""
         await self.conn.execute(
             "UPDATE bank_loans SET status = 'closed' WHERE id = ?",
-            (loan_id,)
+            (loan_id,),
+            commit=commit,
         )
-        await self.conn.commit()
-    
-    async def mark_loan_overdue(self, loan_id: int):
+        if commit:
+            await self.conn.commit()
+
+    async def mark_loan_overdue(self, loan_id: int, *, commit: bool = True):
         """标记贷款逾期"""
         await self.conn.execute(
             "UPDATE bank_loans SET status = 'overdue' WHERE id = ?",
-            (loan_id,)
+            (loan_id,),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
     
     async def get_overdue_loans(self, current_time: int) -> List[dict]:
         """获取所有逾期贷款"""
@@ -853,14 +875,17 @@ class DatabaseExtended:
     # ===== Phase 3: 银行交易流水 CRUD =====
     
     async def add_bank_transaction(self, user_id: str, trans_type: str, amount: int, 
-                                    balance_after: int, description: str, created_at: int):
+                                    balance_after: int, description: str, created_at: int,
+                                    *, commit: bool = True):
         """添加银行交易流水"""
         await self.conn.execute(
             """INSERT INTO bank_transactions (user_id, trans_type, amount, balance_after, description, created_at)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (user_id, trans_type, amount, balance_after, description, created_at)
+            (user_id, trans_type, amount, balance_after, description, created_at),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
     
     async def get_bank_transactions(self, user_id: str, limit: int = 20) -> List[dict]:
         """获取用户银行交易流水"""
@@ -900,7 +925,7 @@ class DatabaseExtended:
     
     # ===== Phase 4: 玩家贷款等级系统 CRUD =====
     
-    async def ensure_player_loan_tier_table(self):
+    async def ensure_player_loan_tier_table(self, *, commit: bool = True):
         """确保玩家贷款等级表存在"""
         await self.conn.execute("""
             CREATE TABLE IF NOT EXISTS player_loan_tiers (
@@ -908,8 +933,9 @@ class DatabaseExtended:
                 loan_tier INTEGER NOT NULL DEFAULT 1,
                 updated_at INTEGER DEFAULT 0
             )
-        """)
-        await self.conn.commit()
+        """, commit=commit)
+        if commit:
+            await self.conn.commit()
     
     async def get_player_loan_tier(self, user_id: str) -> Optional[int]:
         """获取玩家的贷款等级（通过挑战获得）"""
@@ -921,15 +947,17 @@ class DatabaseExtended:
             row = await cursor.fetchone()
             return row[0] if row else None
     
-    async def set_player_loan_tier(self, user_id: str, tier: int):
+    async def set_player_loan_tier(self, user_id: str, tier: int, *, commit: bool = True):
         """设置玩家的贷款等级"""
         import time
-        await self.ensure_player_loan_tier_table()
+        await self.ensure_player_loan_tier_table(commit=commit)
         await self.conn.execute(
             """
             INSERT INTO player_loan_tiers (user_id, loan_tier, updated_at) VALUES (?, ?, ?)
             ON CONFLICT(user_id) DO UPDATE SET loan_tier = ?, updated_at = ?
             """,
-            (user_id, tier, int(time.time()), tier, int(time.time()))
+            (user_id, tier, int(time.time()), tier, int(time.time())),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()

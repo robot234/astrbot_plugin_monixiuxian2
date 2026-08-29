@@ -1,5 +1,8 @@
 # handlers/storage_ring_handler.py
 
+import json
+import time
+
 from astrbot.api.event import AstrMessageEvent
 from astrbot.api.all import At, Plain
 from ..data import DataBase
@@ -32,6 +35,10 @@ ITEM_CATEGORIES = {
 }
 
 __all__ = ["StorageRingHandler"]
+
+
+class _GiftAbort(RuntimeError):
+    """Expected gift conflict that must roll back the current transaction."""
 
 
 class StorageRingHandler:
@@ -198,6 +205,381 @@ class StorageRingHandler:
         player.set_pills_inventory(inventory)
         await self.db.update_player(player)
 
+    @staticmethod
+    def _gift_inventory_column(source_type: str) -> str:
+        if source_type == "pill":
+            return "pills_inventory"
+        if source_type == "storage":
+            return "storage_ring_items"
+        raise _GiftAbort("赠予物品来源无效")
+
+    async def _read_gift_inventory_locked(self, user_id: str, source_type: str):
+        column = self._gift_inventory_column(source_type)
+        async with self.db.conn.execute(
+            f"SELECT {column} FROM players WHERE user_id = ?",
+            (user_id,),
+            commit=False,
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            raise _GiftAbort("玩家不存在或已被删除")
+        return column, row[0]
+
+    async def _mutate_gift_inventory_locked(
+        self,
+        player: Player,
+        source_type: str,
+        item_name: str,
+        count: int,
+        *,
+        adding: bool,
+    ) -> str:
+        """CAS-update an escrow inventory while the transaction is owned."""
+        column, old_raw = await self._read_gift_inventory_locked(player.user_id, source_type)
+        try:
+            inventory = json.loads(old_raw or "{}")
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise _GiftAbort("玩家物品数据损坏") from exc
+        if not isinstance(inventory, dict):
+            raise _GiftAbort("玩家物品数据损坏")
+
+        value = inventory.get(item_name, 0)
+        nested = isinstance(value, dict)
+        quantity = value.get("count") if nested else value
+        if isinstance(quantity, bool) or not isinstance(quantity, int):
+            raise _GiftAbort("玩家物品数量无效")
+
+        if adding:
+            if source_type == "storage" and item_name not in inventory:
+                capacity = self.storage_ring_manager.get_ring_capacity(player.storage_ring)
+                if len(inventory) >= capacity:
+                    raise _GiftAbort(f"储物戒已满！({capacity}/{capacity}格)")
+            new_quantity = quantity + count
+            if nested:
+                updated = dict(value)
+                updated["count"] = new_quantity
+                inventory[item_name] = updated
+            else:
+                inventory[item_name] = new_quantity
+        else:
+            if item_name not in inventory or quantity < count:
+                raise _GiftAbort(f"物品【{item_name}】数量不足")
+            if count == quantity:
+                del inventory[item_name]
+            elif nested:
+                updated = dict(value)
+                updated["count"] = quantity - count
+                inventory[item_name] = updated
+            else:
+                inventory[item_name] = quantity - count
+
+        new_raw = json.dumps(inventory, ensure_ascii=False)
+        if old_raw is None:
+            cursor = await self.db.conn.execute(
+                f"UPDATE players SET {column} = ? WHERE user_id = ? AND {column} IS NULL",
+                (new_raw, player.user_id),
+                commit=False,
+            )
+        else:
+            cursor = await self.db.conn.execute(
+                f"UPDATE players SET {column} = ? WHERE user_id = ? AND {column} = ?",
+                (new_raw, player.user_id, old_raw),
+                commit=False,
+            )
+        if cursor.rowcount != 1:
+            raise _GiftAbort("玩家物品状态已变化，请重试")
+        return new_raw
+
+    @staticmethod
+    def _gift_quantity(inventory: dict, item_name: str) -> int:
+        value = inventory.get(item_name, 0)
+        quantity = value.get("count") if isinstance(value, dict) else value
+        if isinstance(quantity, bool) or not isinstance(quantity, int):
+            return 0
+        return quantity
+
+    async def _fetch_gift_locked(
+        self,
+        *,
+        gift_id: int | None = None,
+        receiver_id: str | None = None,
+        sender_id: str | None = None,
+        live: bool | None = None,
+    ):
+        clauses = ["1 = 1"]
+        params = []
+        if gift_id is not None:
+            clauses.append("id = ?")
+            params.append(gift_id)
+        if receiver_id is not None:
+            clauses.append("receiver_id = ?")
+            params.append(receiver_id)
+        if sender_id is not None:
+            clauses.append("sender_id = ?")
+            params.append(sender_id)
+        if live is True:
+            clauses.append("expires_at > ?")
+            params.append(int(time.time()))
+        elif live is False:
+            clauses.append("expires_at <= ?")
+            params.append(int(time.time()))
+
+        async with self.db.conn.execute(
+            """
+            SELECT id, receiver_id, sender_id, sender_name, item_name, count,
+                   source_type, created_at, expires_at
+            FROM pending_gifts
+            WHERE """ + " AND ".join(clauses) + "\n"
+            "            ORDER BY created_at DESC, id DESC\n"
+            "            LIMIT 1",
+            tuple(params),
+            commit=False,
+        ) as cursor:
+            row = await cursor.fetchone()
+        if not row:
+            return None
+        return {
+            "id": row[0],
+            "receiver_id": row[1],
+            "sender_id": row[2],
+            "sender_name": row[3],
+            "item_name": row[4],
+            "count": row[5],
+            "source_type": row[6],
+            "created_at": row[7],
+            "expires_at": row[8],
+        }
+
+    async def _restore_gift_locked(self, gift: dict):
+        sender = await self.db.get_player_by_id(gift["sender_id"])
+        if not sender:
+            raise _GiftAbort("赠予者已不存在，暂时无法返还物品")
+        new_raw = await self._mutate_gift_inventory_locked(
+            sender,
+            gift.get("source_type", "storage"),
+            gift["item_name"],
+            gift["count"],
+            adding=True,
+        )
+        return sender, new_raw
+
+    async def _claim_gift_locked(self, gift: dict, *, expired: bool = False) -> None:
+        now = int(time.time())
+        expiry_clause = "expires_at <= ?" if expired else "expires_at > ?"
+        cursor = await self.db.conn.execute(
+            f"""
+            DELETE FROM pending_gifts
+            WHERE id = ? AND receiver_id = ? AND sender_id = ? AND {expiry_clause}
+            """,
+            (gift["id"], gift["receiver_id"], gift["sender_id"], now),
+            commit=False,
+        )
+        if cursor.rowcount != 1:
+            raise _GiftAbort("赠予请求已被处理或状态已变化")
+
+    async def create_gift(
+        self,
+        sender: Player,
+        receiver_id: str,
+        item_name: str,
+        count: int,
+        sender_name: str = "",
+    ):
+        """Escrow the sender's item and create one pending gift atomically."""
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            return False, "数量必须大于0", None
+        if not receiver_id or receiver_id == sender.user_id:
+            return False, "不能赠予物品给自己", None
+        if not item_name:
+            return False, "请指定要赠予的物品名称", None
+
+        try:
+            async with self.db.transaction():
+                current_sender = await self.db.get_player_by_id(sender.user_id)
+                receiver = await self.db.get_player_by_id(receiver_id)
+                if not current_sender or not receiver:
+                    raise _GiftAbort("目标玩家尚未开始修仙")
+
+                _, storage_raw = await self._read_gift_inventory_locked(sender.user_id, "storage")
+                _, pills_raw = await self._read_gift_inventory_locked(sender.user_id, "pill")
+                try:
+                    storage = json.loads(storage_raw or "{}")
+                    pills = json.loads(pills_raw or "{}")
+                except (TypeError, json.JSONDecodeError) as exc:
+                    raise _GiftAbort("玩家物品数据损坏") from exc
+                if not isinstance(storage, dict) or not isinstance(pills, dict):
+                    raise _GiftAbort("玩家物品数据损坏")
+
+                if self._gift_quantity(storage, item_name) >= count:
+                    source_type = "storage"
+                elif self._gift_quantity(pills, item_name) >= count:
+                    source_type = "pill"
+                else:
+                    raise _GiftAbort(f"你没有足够的【{item_name}】")
+
+                new_raw = await self._mutate_gift_inventory_locked(
+                    current_sender, source_type, item_name, count, adding=False
+                )
+                gift_id = await self.db.ext.create_pending_gift(
+                    receiver_id=receiver_id,
+                    sender_id=current_sender.user_id,
+                    sender_name=sender_name or current_sender.user_name or current_sender.user_id[:8],
+                    item_name=item_name,
+                    count=count,
+                    expires_hours=24,
+                    source_type=source_type,
+                    commit=False,
+                )
+        except _GiftAbort as exc:
+            return False, str(exc), None
+
+        if source_type == "pill":
+            sender.pills_inventory = new_raw
+        else:
+            sender.storage_ring_items = new_raw
+        return True, f"赠予请求已发送，物品将在对方确认后交付（ID：{gift_id}）", source_type
+
+    async def accept_gift(self, player: Player):
+        """Accept one gift with a conditional exactly-once claim."""
+        outcome = None
+        try:
+            async with self.db.transaction():
+                current_receiver = await self.db.get_player_by_id(player.user_id)
+                if not current_receiver:
+                    raise _GiftAbort("接收者不存在或已被删除")
+                gift = await self._fetch_gift_locked(receiver_id=player.user_id, live=True)
+                if gift:
+                    new_raw = await self._mutate_gift_inventory_locked(
+                        current_receiver,
+                        gift.get("source_type", "storage"),
+                        gift["item_name"],
+                        gift["count"],
+                        adding=True,
+                    )
+                    await self._claim_gift_locked(gift)
+                    outcome = (True, gift, new_raw)
+                else:
+                    expired_gift = await self._fetch_gift_locked(receiver_id=player.user_id, live=False)
+                    if not expired_gift:
+                        outcome = (False, None, None)
+                    else:
+                        sender, sender_raw = await self._restore_gift_locked(expired_gift)
+                        await self._claim_gift_locked(expired_gift, expired=True)
+                        outcome = (False, expired_gift, sender_raw)
+        except _GiftAbort as exc:
+            return False, str(exc), None
+
+        success, gift, new_raw = outcome
+        if gift is None:
+            return False, "你没有待接收的赠予物品", None
+        if not success:
+            return False, f"赠予【{gift['item_name']}】已过期，物品已返还给发送者", None
+
+        source_type = gift.get("source_type", "storage")
+        if source_type == "pill":
+            player.pills_inventory = new_raw
+            location = "丹药背包"
+        else:
+            player.storage_ring_items = new_raw
+            location = "储物戒"
+        return True, (
+            f"已接收来自【{gift['sender_name']}】的赠予！\n"
+            f"获得：【{gift['item_name']}】x{gift['count']}\n"
+            f"已存入{location}"
+        ), source_type
+
+    async def reject_gift(self, player: Player):
+        """Reject one live gift and refund its sender atomically."""
+        try:
+            async with self.db.transaction():
+                gift = await self._fetch_gift_locked(receiver_id=player.user_id, live=True)
+                if not gift:
+                    return False, "你没有待处理的赠予请求", None
+                sender, sender_raw = await self._restore_gift_locked(gift)
+                await self._claim_gift_locked(gift)
+        except _GiftAbort as exc:
+            return False, str(exc), None
+
+        if gift.get("source_type", "storage") == "pill":
+            sender.pills_inventory = sender_raw
+        else:
+            sender.storage_ring_items = sender_raw
+        return True, (
+            f"已拒绝来自【{gift['sender_name']}】的赠予\n"
+            f"【{gift['item_name']}】x{gift['count']} 已返还"
+        ), gift.get("source_type", "storage")
+
+    async def cancel_gift(self, sender: Player, gift_id: int | None = None):
+        """Cancel one sender-owned live gift and refund the escrow atomically."""
+        try:
+            async with self.db.transaction():
+                gift = await self._fetch_gift_locked(
+                    gift_id=gift_id, sender_id=sender.user_id, live=True
+                )
+                if not gift:
+                    return False, "你没有可取消的赠予请求", None
+                current_sender = await self.db.get_player_by_id(sender.user_id)
+                if not current_sender:
+                    raise _GiftAbort("赠予者不存在或已被删除")
+                sender_raw = await self._mutate_gift_inventory_locked(
+                    current_sender,
+                    gift.get("source_type", "storage"),
+                    gift["item_name"],
+                    gift["count"],
+                    adding=True,
+                )
+                await self._claim_gift_locked(gift)
+        except _GiftAbort as exc:
+            return False, str(exc), None
+
+        if gift.get("source_type", "storage") == "pill":
+            sender.pills_inventory = sender_raw
+        else:
+            sender.storage_ring_items = sender_raw
+        return True, f"已取消赠予【{gift['item_name']}】x{gift['count']}，物品已返还", gift.get("source_type", "storage")
+
+    async def expire_gift(self, gift_id: int):
+        """Refund and conditionally claim one expired gift."""
+        try:
+            async with self.db.transaction():
+                gift = await self._fetch_gift_locked(gift_id=gift_id, live=False)
+                if not gift:
+                    return False, "赠予不存在或尚未过期", None
+                sender, sender_raw = await self._restore_gift_locked(gift)
+                await self._claim_gift_locked(gift, expired=True)
+        except _GiftAbort as exc:
+            return False, str(exc), None
+
+        if gift.get("source_type", "storage") == "pill":
+            sender.pills_inventory = sender_raw
+        else:
+            sender.storage_ring_items = sender_raw
+        return True, f"赠予【{gift['item_name']}】已过期，物品已返还", gift.get("source_type", "storage")
+
+    async def expire_pending_gifts(self, receiver_id: str | None = None) -> int:
+        """Expire gifts one by one; each refund has its own conditional claim."""
+        clauses = ["expires_at <= ?"]
+        params = [int(time.time())]
+        if receiver_id is not None:
+            clauses.append("receiver_id = ?")
+            params.append(receiver_id)
+        async with self.db.transaction():
+            async with self.db.conn.execute(
+                "SELECT id FROM pending_gifts WHERE " + " AND ".join(clauses),
+                tuple(params),
+                commit=False,
+            ) as cursor:
+                rows = await cursor.fetchall()
+        processed = 0
+        for row in rows:
+            success, _, _ = await self.expire_gift(row[0])
+            processed += int(success)
+        return processed
+
+    async def cancel_pending_gift(self, sender: Player, gift_id: int | None = None):
+        """Compatibility alias for callers that use the pending-gift name."""
+        return await self.cancel_gift(sender, gift_id)
+
     @player_required
     async def handle_gift_item(self, player: Player, event: AstrMessageEvent, args: str):
         """赠予物品给其他玩家（支持储物戒和丹药背包）"""
@@ -267,68 +649,18 @@ class StorageRingHandler:
             yield event.plain_result("数量必须大于0")
             return
 
-        # 检查目标玩家
-        target_player = await self.db.get_player_by_id(target_id)
-        if not target_player:
-            yield event.plain_result(f"目标玩家（QQ:{target_id}）尚未开始修仙")
-            return
-
-        if target_id == player.user_id:
-            yield event.plain_result("不能赠予物品给自己")
-            return
-
-        # 判断物品来源：先检查储物戒，再检查丹药背包
-        source_type = None
-        has_in_storage = self.storage_ring_manager.has_item(player, item_name, count)
-        has_in_pills = self._check_pill_inventory(player, item_name, count)
-
-        if has_in_storage:
-            source_type = "storage"
-        elif has_in_pills:
-            source_type = "pill"
-        else:
-            # 都没有足够数量，给出详细提示
-            storage_count = self.storage_ring_manager.get_item_count(player, item_name)
-            pill_count = self._get_pill_count(player, item_name)
-            
-            if storage_count == 0 and pill_count == 0:
-                yield event.plain_result(f"你没有【{item_name}】！\n请检查储物戒或丹药背包。")
-            else:
-                msg_parts = [f"【{item_name}】数量不足！"]
-                if storage_count > 0:
-                    msg_parts.append(f"储物戒中：{storage_count}个")
-                if pill_count > 0:
-                    msg_parts.append(f"丹药背包中：{pill_count}个")
-                msg_parts.append(f"需要：{count}个")
-                yield event.plain_result("\n".join(msg_parts))
-            return
-
-        # 根据来源类型扣除物品
-        if source_type == "storage":
-            success, _ = await self.storage_ring_manager.retrieve_item(player, item_name, count)
-            if not success:
-                yield event.plain_result("赠予失败：无法从储物戒取出物品")
-                return
-            source_label = "储物戒"
-        else:  # pill
-            success = await self._remove_pill_from_inventory(player, item_name, count)
-            if not success:
-                yield event.plain_result("赠予失败：无法从丹药背包取出物品")
-                return
-            source_label = "丹药背包"
-
-        # 存储待处理的赠予请求到数据库
-        sender_name = event.get_sender_name()
-        await self.db.ext.create_pending_gift(
+        success, msg, source_type = await self.create_gift(
+            sender=player,
             receiver_id=target_id,
-            sender_id=player.user_id,
-            sender_name=sender_name,
             item_name=item_name,
             count=count,
-            expires_hours=24,
-            source_type=source_type
+            sender_name=event.get_sender_name(),
         )
+        if not success:
+            yield event.plain_result(f"赠予失败：{msg}")
+            return
 
+        source_label = "丹药背包" if source_type == "pill" else "储物戒"
         yield event.plain_result(
             f"📦 赠予请求已发送！\n"
             f"【{item_name}】x{count}（来自{source_label}）→ @{target_id}\n"
@@ -339,92 +671,14 @@ class StorageRingHandler:
     @player_required
     async def handle_accept_gift(self, player: Player, event: AstrMessageEvent):
         """接收赠予的物品"""
-        user_id = player.user_id
-
-        # 从数据库获取待处理的赠予请求
-        gift = await self.db.ext.get_pending_gift(user_id)
-        if not gift:
-            yield event.plain_result("你没有待接收的赠予物品")
-            return
-
-        item_name = gift["item_name"]
-        count = gift["count"]
-        sender_name = gift["sender_name"]
-        sender_id = gift["sender_id"]
-        gift_id = gift["id"]
-        source_type = gift.get("source_type", "storage")
-
-        # 根据物品类型决定存入位置
-        # 如果是丹药类型，存入丹药背包；否则存入储物戒
-        is_pill = self.storage_ring_manager.is_pill(item_name)
-
-        if is_pill:
-            # 存入丹药背包
-            await self._add_pill_to_inventory(player, item_name, count)
-            await self.db.ext.delete_pending_gift(gift_id)
-            yield event.plain_result(
-                f"✅ 已接收来自【{sender_name}】的赠予！\n"
-                f"获得：【{item_name}】x{count}\n"
-                f"💊 已存入丹药背包"
-            )
-        else:
-            # 尝试存入接收者的储物戒
-            success, message = await self.storage_ring_manager.store_item(player, item_name, count)
-
-            if success:
-                await self.db.ext.delete_pending_gift(gift_id)
-                yield event.plain_result(
-                    f"✅ 已接收来自【{sender_name}】的赠予！\n"
-                    f"获得：【{item_name}】x{count}\n"
-                    f"📦 已存入储物戒"
-                )
-            else:
-                # 存入失败，物品返还给发送者
-                sender_player = await self.db.get_player_by_id(sender_id)
-                if sender_player:
-                    if source_type == "pill":
-                        await self._add_pill_to_inventory(sender_player, item_name, count)
-                    else:
-                        await self.storage_ring_manager.store_item(sender_player, item_name, count, silent=True)
-
-                await self.db.ext.delete_pending_gift(gift_id)
-                yield event.plain_result(
-                    f"❌ 接收失败：{message}\n"
-                    f"物品已返还给【{sender_name}】"
-                )
+        success, message, _ = await self.accept_gift(player)
+        yield event.plain_result(("✅ " if success else "❌ ") + message)
 
     @player_required
     async def handle_reject_gift(self, player: Player, event: AstrMessageEvent):
         """拒绝赠予的物品"""
-        user_id = player.user_id
-
-        # 从数据库获取待处理的赠予请求
-        gift = await self.db.ext.get_pending_gift(user_id)
-        if not gift:
-            yield event.plain_result("你没有待处理的赠予请求")
-            return
-
-        item_name = gift["item_name"]
-        count = gift["count"]
-        sender_id = gift["sender_id"]
-        sender_name = gift["sender_name"]
-        gift_id = gift["id"]
-        source_type = gift.get("source_type", "storage")
-
-        # 物品返还给发送者（根据原来的来源类型）
-        sender_player = await self.db.get_player_by_id(sender_id)
-        if sender_player:
-            if source_type == "pill":
-                await self._add_pill_to_inventory(sender_player, item_name, count)
-            else:
-                await self.storage_ring_manager.store_item(sender_player, item_name, count, silent=True)
-
-        # 删除数据库中的赠予请求
-        await self.db.ext.delete_pending_gift(gift_id)
-        yield event.plain_result(
-            f"已拒绝来自【{sender_name}】的赠予\n"
-            f"【{item_name}】x{count} 已返还"
-        )
+        success, message, _ = await self.reject_gift(player)
+        yield event.plain_result(("✅ " if success else "❌ ") + message)
 
     @player_required
     async def handle_upgrade_ring(self, player: Player, event: AstrMessageEvent, ring_name: str):

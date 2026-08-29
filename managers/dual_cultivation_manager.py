@@ -35,6 +35,10 @@ INTIMACY_LEVELS = {
 }
 
 
+class _DualAbort(RuntimeError):
+    """Expected dual-cultivation conflict that must roll back the transaction."""
+
+
 class DualCultivationManager:
     """道侣系统管理器"""
     
@@ -94,39 +98,47 @@ class DualCultivationManager:
         
         await self.db.conn.commit()
     
-    async def _create_partner_request(self, from_id: str, from_name: str, target_id: str) -> int:
+    async def _create_partner_request(
+        self, from_id: str, from_name: str, target_id: str, *, commit: bool = True
+    ) -> int:
         """创建道侣请求"""
         now = int(time.time())
         expires_at = now + PARTNER_REQUEST_EXPIRE
-        
+
         await self.db.conn.execute(
             "DELETE FROM partner_requests WHERE target_id = ?",
-            (target_id,)
+            (target_id,),
+            commit=commit,
         )
-        
-        await self.db.conn.execute(
+
+        cursor = await self.db.conn.execute(
             """
             INSERT INTO partner_requests (from_id, from_name, target_id, created_at, expires_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (from_id, from_name, target_id, now, expires_at)
+            (from_id, from_name, target_id, now, expires_at),
+            commit=commit,
         )
-        await self.db.conn.commit()
-        
-        async with self.db.conn.execute("SELECT last_insert_rowid()") as cursor:
-            row = await cursor.fetchone()
-            return row[0] if row else 0
-    
-    async def _get_pending_partner_request(self, target_id: str) -> Optional[PartnerRequest]:
+        if cursor.rowcount != 1:
+            raise _DualAbort("道侣请求创建失败")
+        if commit:
+            await self.db.conn.commit()
+        return cursor.lastrowid or 0
+
+    async def _get_pending_partner_request(
+        self, target_id: str, *, commit: bool = True
+    ) -> Optional[PartnerRequest]:
         """获取待处理的道侣请求"""
         now = int(time.time())
-        
+
         await self.db.conn.execute(
             "DELETE FROM partner_requests WHERE expires_at < ?",
-            (now,)
+            (now,),
+            commit=commit,
         )
-        await self.db.conn.commit()
-        
+        if commit:
+            await self.db.conn.commit()
+
         async with self.db.conn.execute(
             """
             SELECT id, from_id, from_name, target_id, created_at, expires_at
@@ -134,7 +146,8 @@ class DualCultivationManager:
             WHERE target_id = ? AND expires_at > ?
             ORDER BY created_at DESC LIMIT 1
             """,
-            (target_id, now)
+            (target_id, now),
+            commit=commit,
         ) as cursor:
             row = await cursor.fetchone()
             if row:
@@ -148,13 +161,35 @@ class DualCultivationManager:
                 )
             return None
     
-    async def _delete_partner_request(self, request_id: int):
-        """删除道侣请求"""
-        await self.db.conn.execute(
-            "DELETE FROM partner_requests WHERE id = ?",
-            (request_id,)
+    async def _delete_partner_request(
+        self,
+        request_id: int,
+        *,
+        from_id: str | None = None,
+        target_id: str | None = None,
+        expires_after: int | None = None,
+        commit: bool = True,
+    ):
+        """删除道侣请求，并可按请求所有者/有效期做 CAS 校验。"""
+        clauses = ["id = ?"]
+        params = [request_id]
+        if from_id is not None:
+            clauses.append("from_id = ?")
+            params.append(from_id)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        if expires_after is not None:
+            clauses.append("expires_at > ?")
+            params.append(expires_after)
+        cursor = await self.db.conn.execute(
+            "DELETE FROM partner_requests WHERE " + " AND ".join(clauses),
+            tuple(params),
+            commit=commit,
         )
-        await self.db.conn.commit()
+        if commit:
+            await self.db.conn.commit()
+        return cursor.rowcount
     
     async def _get_last_dual_time(self, user_id: str) -> Optional[int]:
         """获取上次双修时间"""
@@ -165,17 +200,21 @@ class DualCultivationManager:
             row = await cursor.fetchone()
             return row[0] if row else None
     
-    async def _set_last_dual_time(self, user_id: str, timestamp: int):
+    async def _set_last_dual_time(self, user_id: str, timestamp: int, *, commit: bool = True):
         """设置上次双修时间"""
-        await self.db.conn.execute(
+        cursor = await self.db.conn.execute(
             """
             INSERT INTO dual_cultivation (user_id, last_dual_time)
             VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET last_dual_time = excluded.last_dual_time
             """,
-            (user_id, timestamp)
+            (user_id, timestamp),
+            commit=commit,
         )
-        await self.db.conn.commit()
+        if cursor.rowcount != 1:
+            raise _DualAbort("双修冷却状态写入失败")
+        if commit:
+            await self.db.conn.commit()
     
     async def _get_breakup_cooldown(self, user_id: str) -> Optional[int]:
         """获取解除道侣冷却时间"""
@@ -186,25 +225,33 @@ class DualCultivationManager:
             row = await cursor.fetchone()
             return row[0] if row else None
     
-    async def _set_breakup_cooldown(self, user_id: str, timestamp: int):
+    async def _set_breakup_cooldown(
+        self, user_id: str, timestamp: int, *, commit: bool = True
+    ):
         """设置解除道侣冷却"""
-        await self.db.conn.execute(
+        cursor = await self.db.conn.execute(
             """
             INSERT INTO partner_breakup_cooldown (user_id, breakup_time)
             VALUES (?, ?)
             ON CONFLICT(user_id) DO UPDATE SET breakup_time = excluded.breakup_time
             """,
-            (user_id, timestamp)
+            (user_id, timestamp),
+            commit=commit,
         )
-        await self.db.conn.commit()
-    
-    async def _clear_breakup_cooldown(self, user_id: str):
+        if cursor.rowcount != 1:
+            raise _DualAbort("解除道侣冷却写入失败")
+        if commit:
+            await self.db.conn.commit()
+
+    async def _clear_breakup_cooldown(self, user_id: str, *, commit: bool = True):
         """清除解除道侣冷却"""
         await self.db.conn.execute(
             "DELETE FROM partner_breakup_cooldown WHERE user_id = ?",
-            (user_id,)
+            (user_id,),
+            commit=commit,
         )
-        await self.db.conn.commit()
+        if commit:
+            await self.db.conn.commit()
     
     # ==================== 辅助方法 ====================
     
@@ -232,34 +279,38 @@ class DualCultivationManager:
         """发起道侣请求"""
         if initiator.user_id == target_id:
             return False, "❌ 不能与自己结为道侣。"
-        
-        if initiator.has_partner():
-            return False, "❌ 你已有道侣，请先解除当前道侣关系。"
-        
-        breakup_time = await self._get_breakup_cooldown(initiator.user_id)
-        now = int(time.time())
-        if breakup_time and (now - breakup_time) < BREAKUP_COOLDOWN:
-            remaining_days = (BREAKUP_COOLDOWN - (now - breakup_time)) // 86400 + 1
-            return False, f"❌ 你刚解除道侣关系，需等待 {remaining_days} 天后才能再结道侣。"
-        
-        target = await self.db.get_player_by_id(target_id)
-        if not target:
-            return False, "❌ 对方还未踏入修仙之路。"
-        
-        if target.has_partner():
-            return False, "❌ 对方已有道侣。"
-        
-        target_breakup_time = await self._get_breakup_cooldown(target_id)
-        if target_breakup_time and (now - target_breakup_time) < BREAKUP_COOLDOWN:
-            return False, "❌ 对方刚解除道侣关系，暂时无法结为道侣。"
-        
-        await self._create_partner_request(
-            initiator.user_id,
-            initiator.user_name or initiator.user_id[:8],
-            target_id
-        )
-        
-        target_name = target.user_name or target_id[:8]
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(initiator.user_id)
+                target = await self.db.get_player_by_id(target_id)
+                if not current or not target:
+                    return False, "❌ 对方还未踏入修仙之路。"
+                if current.has_partner():
+                    return False, "❌ 你已有道侣，请先解除当前道侣关系。"
+
+                now = int(time.time())
+                breakup_time = await self._get_breakup_cooldown(current.user_id)
+                if breakup_time and (now - breakup_time) < BREAKUP_COOLDOWN:
+                    remaining_days = (BREAKUP_COOLDOWN - (now - breakup_time)) // 86400 + 1
+                    return False, f"❌ 你刚解除道侣关系，需等待 {remaining_days} 天后才能再结道侣。"
+                if target.has_partner():
+                    return False, "❌ 对方已有道侣。"
+
+                target_breakup_time = await self._get_breakup_cooldown(target.user_id)
+                if target_breakup_time and (now - target_breakup_time) < BREAKUP_COOLDOWN:
+                    return False, "❌ 对方刚解除道侣关系，暂时无法结为道侣。"
+
+                await self._create_partner_request(
+                    current.user_id,
+                    current.user_name or current.user_id[:8],
+                    target.user_id,
+                    commit=False,
+                )
+                target_name = target.user_name or target.user_id[:8]
+        except _DualAbort as exc:
+            return False, str(exc)
+
         return True, (
             f"💕 已向【{target_name}】发起道侣请求！\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -275,46 +326,88 @@ class DualCultivationManager:
     
     async def accept_partner_request(self, acceptor: Player) -> Tuple[bool, str]:
         """接受道侣请求"""
-        if acceptor.has_partner():
-            return False, "❌ 你已有道侣，无法接受新的道侣请求。"
-        
-        request = await self._get_pending_partner_request(acceptor.user_id)
-        if not request:
-            return False, "❌ 没有待处理的道侣请求。"
-        
-        initiator = await self.db.get_player_by_id(request.from_id)
-        if not initiator:
-            await self._delete_partner_request(request.id)
-            return False, "❌ 请求发起者数据异常。"
-        
-        if initiator.has_partner():
-            await self._delete_partner_request(request.id)
-            return False, "❌ 对方已与他人结为道侣。"
-        
-        now = int(time.time())
-        
-        initiator.partner_id = acceptor.user_id
-        initiator.partner_bindtime = now
-        initiator.partner_intimacy = 0
-        
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                current_acceptor = await self.db.get_player_by_id(acceptor.user_id)
+                if not current_acceptor:
+                    return False, "❌ 玩家数据异常。"
+                if current_acceptor.has_partner():
+                    return False, "❌ 你已有道侣，无法接受新的道侣请求。"
+
+                request = await self._get_pending_partner_request(
+                    current_acceptor.user_id, commit=False
+                )
+                if not request:
+                    return False, "❌ 没有待处理的道侣请求。"
+
+                initiator = await self.db.get_player_by_id(request.from_id)
+                now = int(time.time())
+                if not initiator:
+                    deleted = await self._delete_partner_request(
+                        request.id,
+                        target_id=current_acceptor.user_id,
+                        expires_after=now,
+                        commit=False,
+                    )
+                    if deleted != 1:
+                        raise _DualAbort("道侣请求状态已变化，请重试")
+                    return False, "❌ 请求发起者数据异常。"
+                if initiator.has_partner():
+                    deleted = await self._delete_partner_request(
+                        request.id,
+                        from_id=initiator.user_id,
+                        target_id=current_acceptor.user_id,
+                        expires_after=now,
+                        commit=False,
+                    )
+                    if deleted != 1:
+                        raise _DualAbort("道侣请求状态已变化，请重试")
+                    return False, "❌ 对方已与他人结为道侣。"
+
+                initiator_cursor = await self.db.conn.execute(
+                    """
+                    UPDATE players
+                    SET partner_id = ?, partner_bindtime = ?, partner_intimacy = 0
+                    WHERE user_id = ? AND COALESCE(partner_id, '') = ''
+                    """,
+                    (current_acceptor.user_id, now, initiator.user_id),
+                    commit=False,
+                )
+                acceptor_cursor = await self.db.conn.execute(
+                    """
+                    UPDATE players
+                    SET partner_id = ?, partner_bindtime = ?, partner_intimacy = 0
+                    WHERE user_id = ? AND COALESCE(partner_id, '') = ''
+                    """,
+                    (initiator.user_id, now, current_acceptor.user_id),
+                    commit=False,
+                )
+                if initiator_cursor.rowcount != 1 or acceptor_cursor.rowcount != 1:
+                    raise _DualAbort("道侣状态已变化，请重试")
+
+                await self._clear_breakup_cooldown(initiator.user_id, commit=False)
+                await self._clear_breakup_cooldown(current_acceptor.user_id, commit=False)
+                deleted = await self._delete_partner_request(
+                    request.id,
+                    from_id=initiator.user_id,
+                    target_id=current_acceptor.user_id,
+                    expires_after=now,
+                    commit=False,
+                )
+                if deleted != 1:
+                    raise _DualAbort("道侣请求状态已变化，请重试")
+
+                initiator_name = initiator.user_name or initiator.user_id[:8]
+                acceptor_name = current_acceptor.user_name or current_acceptor.user_id[:8]
+                total_gold = initiator.gold + current_acceptor.gold
+        except _DualAbort as exc:
+            return False, str(exc)
+
         acceptor.partner_id = initiator.user_id
         acceptor.partner_bindtime = now
         acceptor.partner_intimacy = 0
-        
-        await self.db.update_player(initiator)
-        await self.db.update_player(acceptor)
-        
-        await self._clear_breakup_cooldown(initiator.user_id)
-        await self._clear_breakup_cooldown(acceptor.user_id)
-        
-        await self._delete_partner_request(request.id)
-        
-        initiator_name = initiator.user_name or initiator.user_id[:8]
-        acceptor_name = acceptor.user_name or acceptor.user_id[:8]
-        
-        # 计算共享灵石
-        total_gold = initiator.gold + acceptor.gold
-        
+
         return True, (
             f"💕 恭喜结为道侣！\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -336,27 +429,38 @@ class DualCultivationManager:
     
     async def reject_partner_request(self, rejecter_id: str) -> Tuple[bool, str]:
         """拒绝道侣请求"""
-        request = await self._get_pending_partner_request(rejecter_id)
-        if not request:
-            return False, "❌ 没有待处理的道侣请求。"
-        
-        from_name = request.from_name
-        await self._delete_partner_request(request.id)
-        
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                request = await self._get_pending_partner_request(rejecter_id, commit=False)
+                if not request:
+                    return False, "❌ 没有待处理的道侣请求。"
+                deleted = await self._delete_partner_request(
+                    request.id,
+                    target_id=rejecter_id,
+                    expires_after=int(time.time()),
+                    commit=False,
+                )
+                if deleted != 1:
+                    raise _DualAbort("道侣请求状态已变化，请重试")
+                from_name = request.from_name
+        except _DualAbort as exc:
+            return False, str(exc)
         return True, f"已拒绝【{from_name}】的道侣请求。"
     
     async def break_up(self, player: Player, confirm: bool = False) -> Tuple[bool, str]:
         """解除道侣关系"""
-        if not player.has_partner():
+        current = await self.db.get_player_by_id(player.user_id)
+        if not current or not current.has_partner():
             return False, "❌ 你当前没有道侣。"
-        
+
         if not confirm:
-            partner = await self.db.get_player_by_id(player.partner_id)
+            partner = await self.db.get_player_by_id(current.partner_id)
             partner_name = partner.user_name if partner else "未知"
             return False, (
                 f"⚠️ 确定要与【{partner_name}】解除道侣关系吗？\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"当前亲密度：{player.partner_intimacy}\n"
+                f"当前亲密度：{current.partner_intimacy}\n"
                 f"解除后：\n"
                 f"• 亲密度将清零\n"
                 f"• 3天内无法再结道侣\n"
@@ -365,25 +469,50 @@ class DualCultivationManager:
                 f"💡 使用「解除道侣 确认」确认解除"
             )
         
-        partner = await self.db.get_player_by_id(player.partner_id)
-        now = int(time.time())
-        
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(player.user_id)
+                if not current or not current.has_partner():
+                    return False, "❌ 你当前没有道侣。"
+                partner = await self.db.get_player_by_id(current.partner_id)
+                now = int(time.time())
+                partner_cursor = None
+                if partner:
+                    partner_cursor = await self.db.conn.execute(
+                        """
+                        UPDATE players
+                        SET partner_id = '', partner_bindtime = 0, partner_intimacy = 0
+                        WHERE user_id = ? AND partner_id = ?
+                        """,
+                        (partner.user_id, current.user_id),
+                        commit=False,
+                    )
+                    if partner_cursor.rowcount != 1:
+                        raise _DualAbort("道侣状态已变化，请重试")
+                player_cursor = await self.db.conn.execute(
+                    """
+                    UPDATE players
+                    SET partner_id = '', partner_bindtime = 0, partner_intimacy = 0
+                    WHERE user_id = ? AND partner_id = ?
+                    """,
+                    (current.user_id, current.partner_id),
+                    commit=False,
+                )
+                if player_cursor.rowcount != 1:
+                    raise _DualAbort("道侣状态已变化，请重试")
+                await self._set_breakup_cooldown(current.user_id, now, commit=False)
+                if partner:
+                    await self._set_breakup_cooldown(partner.user_id, now, commit=False)
+                    partner_name = partner.user_name or partner.user_id[:8]
+                else:
+                    partner_name = "未知"
+        except _DualAbort as exc:
+            return False, str(exc)
+
         player.partner_id = ""
         player.partner_bindtime = 0
         player.partner_intimacy = 0
-        await self.db.update_player(player)
-        await self._set_breakup_cooldown(player.user_id, now)
-        
-        if partner:
-            partner.partner_id = ""
-            partner.partner_bindtime = 0
-            partner.partner_intimacy = 0
-            await self.db.update_player(partner)
-            await self._set_breakup_cooldown(partner.user_id, now)
-            partner_name = partner.user_name or partner.user_id[:8]
-        else:
-            partner_name = "未知"
-        
+
         return True, (
             f"💔 已与【{partner_name}】解除道侣关系\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -396,42 +525,57 @@ class DualCultivationManager:
         """道侣双修"""
         if not player.has_partner():
             return False, "❌ 你当前没有道侣，无法进行道侣双修。"
-        
-        now = int(time.time())
-        last_dual = await self._get_last_dual_time(player.user_id)
-        if last_dual and (now - last_dual) < DUAL_CULT_COOLDOWN:
-            remaining = DUAL_CULT_COOLDOWN - (now - last_dual)
-            return False, f"❌ 双修冷却中，还需 {remaining // 60} 分钟。"
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            return False, "❌ 道侣数据异常。"
-        
-        partner_last_dual = await self._get_last_dual_time(partner.user_id)
-        if partner_last_dual and (now - partner_last_dual) < DUAL_CULT_COOLDOWN:
-            remaining = DUAL_CULT_COOLDOWN - (now - partner_last_dual)
-            return False, f"❌ 道侣双修冷却中，还需 {remaining // 60} 分钟。"
-        
-        # 计算双修收益
-        player_exp_gain = int(partner.experience * DUAL_CULT_BASE_EXP_BONUS)
-        partner_exp_gain = int(player.experience * DUAL_CULT_BASE_EXP_BONUS)
-        
-        player.experience += player_exp_gain
-        partner.experience += partner_exp_gain
-        
-        old_level = self._get_intimacy_level(player.partner_intimacy)
-        player.partner_intimacy += DUAL_CULT_INTIMACY_GAIN
-        partner.partner_intimacy += DUAL_CULT_INTIMACY_GAIN
-        new_level = self._get_intimacy_level(player.partner_intimacy)
-        
-        await self.db.update_player(player)
-        await self.db.update_player(partner)
-        
-        await self._set_last_dual_time(player.user_id, now)
-        await self._set_last_dual_time(partner.user_id, now)
-        
+
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(player.user_id)
+                if not current or not current.has_partner():
+                    return False, "❌ 你当前没有道侣，无法进行道侣双修。"
+                partner = await self.db.get_player_by_id(current.partner_id)
+                if not partner or partner.partner_id != current.user_id:
+                    return False, "❌ 道侣数据异常。"
+
+                now = int(time.time())
+                last_dual = await self._get_last_dual_time(current.user_id)
+                if last_dual and (now - last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - last_dual)
+                    return False, f"❌ 双修冷却中，还需 {remaining // 60} 分钟。"
+                partner_last_dual = await self._get_last_dual_time(partner.user_id)
+                if partner_last_dual and (now - partner_last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - partner_last_dual)
+                    return False, f"❌ 道侣双修冷却中，还需 {remaining // 60} 分钟。"
+
+                player_exp_gain = int(partner.experience * DUAL_CULT_BASE_EXP_BONUS)
+                partner_exp_gain = int(current.experience * DUAL_CULT_BASE_EXP_BONUS)
+                old_level = self._get_intimacy_level(current.partner_intimacy)
+                current.experience += player_exp_gain
+                partner.experience += partner_exp_gain
+                current.partner_intimacy += DUAL_CULT_INTIMACY_GAIN
+                partner.partner_intimacy += DUAL_CULT_INTIMACY_GAIN
+                new_level = self._get_intimacy_level(current.partner_intimacy)
+
+                await self.db.update_player(current, commit=False)
+                await self.db.update_player(partner, commit=False)
+                await self._set_last_dual_time(current.user_id, now, commit=False)
+                await self._set_last_dual_time(partner.user_id, now, commit=False)
+                outcome = (
+                    current,
+                    partner,
+                    player_exp_gain,
+                    partner_exp_gain,
+                    old_level,
+                    new_level,
+                )
+        except _DualAbort as exc:
+            return False, str(exc)
+
+        current, partner, player_exp_gain, partner_exp_gain, old_level, new_level = outcome
+        player.experience = current.experience
+        player.partner_id = current.partner_id
+        player.partner_bindtime = current.partner_bindtime
+        player.partner_intimacy = current.partner_intimacy
         partner_name = partner.user_name or partner.user_id[:8]
-        
         result = (
             f"💕 道侣双修成功！\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -441,17 +585,15 @@ class DualCultivationManager:
             f"{partner_name} 获得修为：+{partner_exp_gain:,}\n"
             f"亲密度：+{DUAL_CULT_INTIMACY_GAIN}\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"当前亲密度：{player.partner_intimacy}\n"
+            f"当前亲密度：{current.partner_intimacy}\n"
             f"下次双修：1小时后"
         )
-        
         if new_level > old_level:
             level_info = INTIMACY_LEVELS[new_level]
             result += (
                 f"\n\n🎉 亲密度提升至【{level_info['title']}】！\n"
                 f"修炼加速提升至：+{level_info['cultivation_bonus']:.0%}"
             )
-        
         return True, result
     
     # ==================== 共享灵石 ====================
@@ -462,30 +604,31 @@ class DualCultivationManager:
         Returns:
             (成功, 消息, 总灵石)
         """
-        if not player.has_partner():
+        async with self.db.transaction():
+            current = await self.db.get_player_by_id(player.user_id)
+            if not current:
+                return False, "❌ 玩家数据异常。", 0
+            if not current.has_partner():
+                return True, (
+                    f"💰 你的灵石：{current.gold:,}\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"💡 结为道侣后可共享灵石"
+                ), current.gold
+            partner = await self.db.get_player_by_id(current.partner_id)
+            if not partner or partner.partner_id != current.user_id:
+                return False, "❌ 道侣数据异常。", 0
+            partner_name = partner.user_name or partner.user_id[:8]
+            total_gold = current.gold + partner.gold
             return True, (
-                f"💰 你的灵石：{player.gold:,}\n"
+                f"💰 共享灵石\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"💡 结为道侣后可共享灵石"
-            ), player.gold
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            return False, "❌ 道侣数据异常。", 0
-        
-        partner_name = partner.user_name or partner.user_id[:8]
-        total_gold = player.gold + partner.gold
-        
-        return True, (
-            f"💰 共享灵石\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"你的灵石：{player.gold:,}\n"
-            f"{partner_name}的灵石：{partner.gold:,}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"共享总额：{total_gold:,}\n"
-            f"━━━━━━━━━━━━━━━\n"
-            f"💡 购买物品时会自动使用共享灵石"
-        ), total_gold
+                f"你的灵石：{current.gold:,}\n"
+                f"{partner_name}的灵石：{partner.gold:,}\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"共享总额：{total_gold:,}\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"💡 购买物品时会自动使用共享灵石"
+            ), total_gold
     
     async def spend_shared_gold(self, player: Player, amount: int) -> Tuple[bool, str]:
         """消费共享灵石
@@ -495,42 +638,53 @@ class DualCultivationManager:
         Returns:
             (成功, 消息)
         """
-        if amount <= 0:
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "❌ 金额必须大于0。"
-        
-        # 没有道侣，只能用自己的
-        if not player.has_partner():
-            if player.gold < amount:
-                return False, f"❌ 灵石不足，需要 {amount:,}，当前拥有 {player.gold:,}。"
-            player.gold -= amount
-            await self.db.update_player(player)
-            return True, ""
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            # 道侣数据异常，只用自己的
-            if player.gold < amount:
-                return False, f"❌ 灵石不足，需要 {amount:,}，当前拥有 {player.gold:,}。"
-            player.gold -= amount
-            await self.db.update_player(player)
-            return True, ""
-        
-        total_gold = player.gold + partner.gold
-        if total_gold < amount:
-            return False, f"❌ 共享灵石不足，需要 {amount:,}，共享总额 {total_gold:,}。"
-        
-        # 优先扣自己的
-        if player.gold >= amount:
-            player.gold -= amount
-            await self.db.update_player(player)
-        else:
-            # 自己的不够，需要用道侣的
-            remaining = amount - player.gold
-            player.gold = 0
-            partner.gold -= remaining
-            await self.db.update_player(player)
-            await self.db.update_player(partner)
-        
+
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(player.user_id)
+                if not current:
+                    return False, "❌ 玩家数据异常。"
+                if not isinstance(current.gold, int) or current.gold < 0:
+                    return False, "❌ 玩家灵石余额异常。"
+
+                partner = await self.db.get_player_by_id(current.partner_id) if current.has_partner() else None
+                if current.has_partner() and (
+                    not partner or partner.partner_id != current.user_id
+                ):
+                    return False, "❌ 道侣数据异常。"
+                if partner and (not isinstance(partner.gold, int) or partner.gold < 0):
+                    return False, "❌ 道侣灵石余额异常。"
+                total_gold = current.gold + (partner.gold if partner else 0)
+                if total_gold < amount:
+                    return False, f"❌ 共享灵石不足，需要 {amount:,}，共享总额 {total_gold:,}。"
+
+                own_spend = min(current.gold, amount)
+                partner_spend = amount - own_spend
+                if own_spend:
+                    cursor = await self.db.conn.execute(
+                        "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                        (own_spend, current.user_id, own_spend),
+                        commit=False,
+                    )
+                    if cursor.rowcount != 1:
+                        raise _DualAbort("玩家灵石状态已变化，请重试")
+                if partner_spend:
+                    if not partner:
+                        raise _DualAbort("共享灵石数据异常")
+                    cursor = await self.db.conn.execute(
+                        "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                        (partner_spend, partner.user_id, partner_spend),
+                        commit=False,
+                    )
+                    if cursor.rowcount != 1:
+                        raise _DualAbort("道侣灵石状态已变化，请重试")
+                remaining_self = current.gold - own_spend
+        except _DualAbort as exc:
+            return False, str(exc)
+
+        player.gold = remaining_self
         return True, ""
     
     async def check_shared_gold(self, player: Player, amount: int) -> Tuple[bool, int]:
@@ -539,15 +693,19 @@ class DualCultivationManager:
         Returns:
             (是否足够, 共享总额)
         """
-        if not player.has_partner():
-            return player.gold >= amount, player.gold
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            return player.gold >= amount, player.gold
-        
-        total_gold = player.gold + partner.gold
-        return total_gold >= amount, total_gold
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+            return False, 0
+        async with self.db.transaction():
+            current = await self.db.get_player_by_id(player.user_id)
+            if not current:
+                return False, 0
+            if not current.has_partner():
+                return current.gold >= amount, current.gold
+            partner = await self.db.get_player_by_id(current.partner_id)
+            if not partner or partner.partner_id != current.user_id:
+                return current.gold >= amount, current.gold
+            total_gold = current.gold + partner.gold
+            return total_gold >= amount, total_gold
     
     # ==================== 共享储物戒 ====================
     
@@ -599,78 +757,59 @@ class DualCultivationManager:
     
     async def take_from_partner_storage(self, player: Player, item_name: str, count: int = 1) -> Tuple[bool, str]:
         """从道侣储物戒取出物品（带事务保护）"""
-        if not player.has_partner():
-            return False, "❌ 你当前没有道侣。"
-        
-        if count <= 0:
-            return False, "❌ 数量必须大于0。"
-        
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            return False, "❌ 数量必须是大于0的整数。"
+
         player_id = player.user_id
-        partner_id = player.partner_id
-        
-        # 使用事务保护
-        await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            # 重新获取最新数据
-            partner = await self.db.get_player_by_id(partner_id)
-            if not partner:
-                await self.db.conn.rollback()
-                return False, "❌ 道侣数据异常。"
-            
-            current_player = await self.db.get_player_by_id(player_id)
-            if not current_player:
-                await self.db.conn.rollback()
-                return False, "❌ 玩家数据异常。"
-            
-            partner_name = partner.user_name or partner.user_id[:8]
-            partner_items = partner.get_storage_ring_items()
-            
-            if item_name not in partner_items:
-                await self.db.conn.rollback()
-                return False, f"❌ {partner_name}的储物戒中没有【{item_name}】。"
-            
-            # 储物戒格式为 {item_name: count}
-            available_count = partner_items[item_name]
-            
-            if available_count < count:
-                await self.db.conn.rollback()
-                return False, f"❌ {partner_name}的储物戒中只有 {available_count} 个【{item_name}】。"
-            
-            # 检查自己的储物戒是否有空间
-            my_items = current_player.get_storage_ring_items()
-            if item_name not in my_items:
-                # 需要新格子
-                if self.storage_ring_mgr:
+            async with self.db.transaction():
+                current_player = await self.db.get_player_by_id(player_id)
+                if not current_player or not current_player.has_partner():
+                    return False, "❌ 你当前没有道侣。"
+
+                partner_id = current_player.partner_id
+                partner = await self.db.get_player_by_id(partner_id)
+                if not partner or partner.partner_id != current_player.user_id:
+                    return False, "❌ 道侣数据异常。"
+
+                partner_name = partner.user_name or partner.user_id[:8]
+                partner_items = partner.get_storage_ring_items()
+                my_items = current_player.get_storage_ring_items()
+                if not isinstance(partner_items, dict) or not isinstance(my_items, dict):
+                    raise _DualAbort("❌ 玩家物品数据损坏。")
+                if item_name not in partner_items:
+                    return False, f"❌ {partner_name}的储物戒中没有【{item_name}】。"
+
+                available_count = partner_items[item_name]
+                if isinstance(available_count, bool) or not isinstance(available_count, int):
+                    raise _DualAbort("❌ 玩家物品数量无效。")
+                if available_count < count:
+                    return False, f"❌ {partner_name}的储物戒中只有 {available_count} 个【{item_name}】。"
+
+                if item_name not in my_items and self.storage_ring_mgr:
                     available_slots = self.storage_ring_mgr.get_available_slots(current_player)
                     if available_slots <= 0:
-                        await self.db.conn.rollback()
                         capacity = self.storage_ring_mgr.get_ring_capacity(current_player.storage_ring)
                         return False, f"❌ 你的储物戒已满！({capacity}/{capacity}格)"
-            
-            # 从道侣储物戒移除
-            if available_count == count:
-                del partner_items[item_name]
-            else:
-                partner_items[item_name] = available_count - count
-            partner.set_storage_ring_items(partner_items)
-            
-            # 添加到自己的储物戒
-            my_items[item_name] = my_items.get(item_name, 0) + count
-            current_player.set_storage_ring_items(my_items)
-            
-            # 更新两个玩家的数据
-            await self.db.update_player(partner)
-            await self.db.update_player(current_player)
-            
-            await self.db.conn.commit()
-            
-            return True, (
-                f"✅ 成功从{partner_name}的储物戒取出\n"
-                f"【{item_name}】x{count}"
-            )
-        except Exception:
-            await self.db.conn.rollback()
-            raise
+
+                if available_count == count:
+                    del partner_items[item_name]
+                else:
+                    partner_items[item_name] = available_count - count
+                partner.set_storage_ring_items(partner_items)
+                my_items[item_name] = my_items.get(item_name, 0) + count
+                current_player.set_storage_ring_items(my_items)
+
+                await self.db.update_player(partner, commit=False)
+                await self.db.update_player(current_player, commit=False)
+        except _DualAbort as exc:
+            return False, str(exc)
+
+        player.storage_ring_items = current_player.storage_ring_items
+        return True, (
+            f"✅ 成功从{partner_name}的储物戒取出\n"
+            f"【{item_name}】x{count}"
+        )
     
     # ==================== 共享丹药背包 ====================
     
@@ -726,36 +865,44 @@ class DualCultivationManager:
         Returns:
             (成功, 丹药名称或错误消息)
         """
-        if not player.has_partner():
-            return False, "❌ 你当前没有道侣。"
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            return False, "❌ 道侣数据异常。"
-        
-        partner_name = partner.user_name or partner.user_id[:8]
-        pills = partner.get_pills_inventory()
-        
-        # 查找丹药（支持模糊匹配）
-        found_pill_name = None
-        for p_name in pills.keys():
-            if pill_name in p_name or p_name in pill_name:
-                found_pill_name = p_name
-                break
-        
-        if not found_pill_name:
-            return False, f"❌ {partner_name}的丹药背包中没有【{pill_name}】。"
-        
-        if pills[found_pill_name] <= 0:
-            return False, f"❌ {partner_name}的【{found_pill_name}】已用完。"
-        
-        # 扣除丹药
-        pills[found_pill_name] -= 1
-        if pills[found_pill_name] <= 0:
-            del pills[found_pill_name]
-        partner.set_pills_inventory(pills)
-        await self.db.update_player(partner)
-        
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(player.user_id)
+                if not current or not current.has_partner():
+                    return False, "❌ 你当前没有道侣。"
+                partner = await self.db.get_player_by_id(current.partner_id)
+                if not partner or partner.partner_id != current.user_id:
+                    return False, "❌ 道侣数据异常。"
+
+                partner_name = partner.user_name or partner.user_id[:8]
+                pills = partner.get_pills_inventory()
+                if not isinstance(pills, dict):
+                    raise _DualAbort("❌ 玩家丹药数据损坏。")
+
+                # 查找丹药（支持模糊匹配）
+                found_pill_name = None
+                for p_name in pills.keys():
+                    if pill_name in p_name or p_name in pill_name:
+                        found_pill_name = p_name
+                        break
+                if not found_pill_name:
+                    return False, f"❌ {partner_name}的丹药背包中没有【{pill_name}】。"
+
+                quantity = pills[found_pill_name]
+                if isinstance(quantity, bool) or not isinstance(quantity, int):
+                    raise _DualAbort("❌ 玩家丹药数量无效。")
+                if quantity <= 0:
+                    return False, f"❌ {partner_name}的【{found_pill_name}】已用完。"
+
+                if quantity == 1:
+                    del pills[found_pill_name]
+                else:
+                    pills[found_pill_name] = quantity - 1
+                partner.set_pills_inventory(pills)
+                await self.db.update_player(partner, commit=False)
+        except _DualAbort as exc:
+            return False, str(exc)
+
         return True, found_pill_name  # 返回丹药名称，让调用方处理效果
     
     async def use_partner_pill_with_effect(self, player: Player, pill_name: str, pill_mgr: "PillManager") -> Tuple[bool, str]:
@@ -771,138 +918,90 @@ class DualCultivationManager:
         Returns:
             (成功, 消息)
         """
-        if not player.has_partner():
-            return False, "❌ 你当前没有道侣。"
-        
         if not pill_mgr:
             return False, "❌ 丹药系统暂不可用。"
-        
+
         player_id = player.user_id
-        partner_id = player.partner_id
-        
-        partner = await self.db.get_player_by_id(partner_id)
-        if not partner:
-            return False, "❌ 道侣数据异常。"
-        
-        partner_name = partner.user_name or partner.user_id[:8]
-        pills = partner.get_pills_inventory()
-        
-        # 查找丹药（支持模糊匹配）
-        found_pill_name = None
-        for p_name in pills.keys():
-            if pill_name == p_name:
-                # 精确匹配优先
-                found_pill_name = p_name
-                break
-            elif pill_name in p_name or p_name in pill_name:
-                found_pill_name = p_name
-        
-        if not found_pill_name:
-            return False, f"❌ {partner_name}的丹药背包中没有【{pill_name}】。"
-        
-        if pills[found_pill_name] <= 0:
-            return False, f"❌ {partner_name}的【{found_pill_name}】已用完。"
-        
-        # 获取丹药配置
-        pill_data = pill_mgr.get_pill_by_name(found_pill_name)
-        if not pill_data:
-            return False, f"❌ 丹药【{found_pill_name}】配置不存在！"
-        
-        # 检查境界需求
-        required_level = pill_data.get("required_level_index", 0)
-        if player.level_index < required_level:
-            level_data = pill_mgr.config_manager.get_level_data(player.cultivation_type)
-            level_name = f"境界{required_level}"
-            if level_data and 0 <= required_level < len(level_data):
-                level_name = level_data[required_level]["level_name"]
-            return False, (
-                f"境界不足！使用【{found_pill_name}】需要达到【{level_name}】"
-            )
-        
-        # 使用事务保护整个操作
-        await self.db.conn.execute("BEGIN IMMEDIATE")
         try:
-            # 重新获取最新数据
-            partner = await self.db.get_player_by_id(partner_id)
-            current_player = await self.db.get_player_by_id(player_id)
-            
-            if not partner or not current_player:
-                await self.db.conn.rollback()
-                return False, "❌ 数据异常。"
-            
-            pills = partner.get_pills_inventory()
-            if found_pill_name not in pills or pills[found_pill_name] <= 0:
-                await self.db.conn.rollback()
-                return False, f"❌ {partner_name}的【{found_pill_name}】已用完。"
-            
-            # 扣除道侣的丹药
-            pills[found_pill_name] -= 1
-            if pills[found_pill_name] <= 0:
-                del pills[found_pill_name]
-            partner.set_pills_inventory(pills)
-            await self.db.update_player(partner)
-            
-            # 临时添加丹药到玩家背包（use_pill 会自动扣除）
-            player_pills = current_player.get_pills_inventory()
-            player_pills[found_pill_name] = player_pills.get(found_pill_name, 0) + 1
-            current_player.set_pills_inventory(player_pills)
-            await self.db.update_player(current_player)
-            
-            await self.db.conn.commit()
-        except Exception as e:
-            await self.db.conn.rollback()
-            return False, f"❌ 操作失败：{str(e)}"
-        
-        # 重新获取玩家数据用于 use_pill
-        current_player = await self.db.get_player_by_id(player_id)
-        if not current_player:
-            return False, "❌ 玩家数据异常。"
-        
-        # 调用 use_pill 方法应用效果（这会自动扣除玩家背包中的丹药）
-        effect_success, effect_msg = await pill_mgr.use_pill(current_player, found_pill_name)
-        
-        if effect_success:
-            return True, (
-                f"✅ 成功使用道侣的【{found_pill_name}】\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"{effect_msg}"
-            )
-        else:
-            # 使用失败，需要恢复道侣的丹药
-            # 注意：玩家背包中的丹药可能已被 use_pill 扣除或未扣除，需要检查
-            await self.db.conn.execute("BEGIN IMMEDIATE")
-            try:
-                partner = await self.db.get_player_by_id(partner_id)
+            async with self.db.transaction():
                 current_player = await self.db.get_player_by_id(player_id)
-                
-                if partner:
-                    # 恢复道侣的丹药
-                    pills = partner.get_pills_inventory()
-                    pills[found_pill_name] = pills.get(found_pill_name, 0) + 1
-                    partner.set_pills_inventory(pills)
-                    await self.db.update_player(partner)
-                
-                # 检查玩家背包中是否还有该丹药（如果有说明 use_pill 没有扣除）
-                if current_player:
-                    player_pills = current_player.get_pills_inventory()
-                    if found_pill_name in player_pills and player_pills[found_pill_name] > 0:
-                        # 移除临时添加的丹药
-                        player_pills[found_pill_name] -= 1
-                        if player_pills[found_pill_name] <= 0:
-                            del player_pills[found_pill_name]
-                        current_player.set_pills_inventory(player_pills)
-                        await self.db.update_player(current_player)
-                
-                await self.db.conn.commit()
-            except Exception:
-                await self.db.conn.rollback()
-                # 回滚失败也要返回原始错误信息
-            
-            return False, (
-                f"⚠️ 使用道侣的【{found_pill_name}】失败\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"{effect_msg}"
-            )
+                if not current_player or not current_player.has_partner():
+                    return False, "❌ 你当前没有道侣。"
+                partner_id = current_player.partner_id
+                partner = await self.db.get_player_by_id(partner_id)
+                if not partner or partner.partner_id != current_player.user_id:
+                    return False, "❌ 道侣数据异常。"
+
+                partner_name = partner.user_name or partner.user_id[:8]
+                pills = partner.get_pills_inventory()
+                if not isinstance(pills, dict):
+                    raise _DualAbort("❌ 玩家丹药数据损坏。")
+
+                # 查找丹药（支持模糊匹配，精确名称优先）
+                found_pill_name = None
+                for p_name in pills.keys():
+                    if pill_name == p_name:
+                        found_pill_name = p_name
+                        break
+                    if pill_name in p_name or p_name in pill_name:
+                        found_pill_name = p_name
+                if not found_pill_name:
+                    return False, f"❌ {partner_name}的丹药背包中没有【{pill_name}】。"
+
+                quantity = pills[found_pill_name]
+                if isinstance(quantity, bool) or not isinstance(quantity, int):
+                    raise _DualAbort("❌ 玩家丹药数量无效。")
+                if quantity <= 0:
+                    return False, f"❌ {partner_name}的【{found_pill_name}】已用完。"
+
+                pill_data = pill_mgr.get_pill_by_name(found_pill_name)
+                if not pill_data:
+                    return False, f"❌ 丹药【{found_pill_name}】配置不存在！"
+
+                required_level = pill_data.get("required_level_index", 0)
+                if current_player.level_index < required_level:
+                    level_data = pill_mgr.config_manager.get_level_data(current_player.cultivation_type)
+                    level_name = f"境界{required_level}"
+                    if level_data and 0 <= required_level < len(level_data):
+                        level_name = level_data[required_level]["level_name"]
+                    return False, (
+                        f"境界不足！使用【{found_pill_name}】需要达到【{level_name}】"
+                    )
+
+                if quantity == 1:
+                    del pills[found_pill_name]
+                else:
+                    pills[found_pill_name] = quantity - 1
+                partner.set_pills_inventory(pills)
+
+                player_pills = current_player.get_pills_inventory()
+                if not isinstance(player_pills, dict):
+                    raise _DualAbort("❌ 玩家丹药数据损坏。")
+                player_pills[found_pill_name] = player_pills.get(found_pill_name, 0) + 1
+                current_player.set_pills_inventory(player_pills)
+                await self.db.update_player(partner, commit=False)
+                await self.db.update_player(current_player, commit=False)
+
+                effect_success, effect_msg = await pill_mgr.use_pill(
+                    current_player, found_pill_name
+                )
+                if not effect_success:
+                    raise _DualAbort(
+                        f"⚠️ 使用道侣的【{found_pill_name}】失败\n"
+                        f"━━━━━━━━━━━━━━━\n"
+                        f"{effect_msg}"
+                    )
+        except _DualAbort as exc:
+            return False, str(exc)
+        except Exception as exc:
+            return False, f"❌ 操作失败：{exc}"
+
+        player.__dict__.update(current_player.__dict__)
+        return True, (
+            f"✅ 成功使用道侣的【{found_pill_name}】\n"
+            f"━━━━━━━━━━━━━━━\n"
+            f"{effect_msg}"
+        )
     
     # ==================== 修炼加速 ====================
     
@@ -1026,46 +1125,56 @@ class DualCultivationManager:
         """发起普通双修请求（无道侣关系）"""
         if initiator.user_id == target_id:
             return False, "❌ 不能与自己双修。"
-        
-        if initiator.has_partner():
-            if initiator.partner_id == target_id:
-                return False, "💡 你们已是道侣，请使用「道侣双修」指令。"
-            return False, "❌ 你已有道侣，只能与道侣进行双修。"
-        
-        target = await self.db.get_player_by_id(target_id)
-        if not target:
-            return False, "❌ 对方还未踏入修仙之路。"
-        
-        if target.has_partner():
-            return False, "❌ 对方已有道侣，无法与你双修。"
-        
-        now = int(time.time())
-        last_dual = await self._get_last_dual_time(initiator.user_id)
-        if last_dual and (now - last_dual) < DUAL_CULT_COOLDOWN:
-            remaining = DUAL_CULT_COOLDOWN - (now - last_dual)
-            return False, f"❌ 双修冷却中，还需 {remaining // 60} 分钟。"
-        
-        target_last_dual = await self._get_last_dual_time(target_id)
-        if target_last_dual and (now - target_last_dual) < DUAL_CULT_COOLDOWN:
-            remaining = DUAL_CULT_COOLDOWN - (now - target_last_dual)
-            return False, f"❌ 对方正在双修冷却，还需 {remaining // 60} 分钟。"
-        
-        await self.db.conn.execute(
-            "DELETE FROM dual_cultivation_requests WHERE target_id = ?",
-            (target_id,)
-        )
-        
-        expires_at = now + PARTNER_REQUEST_EXPIRE
-        await self.db.conn.execute(
-            """
-            INSERT INTO dual_cultivation_requests (from_id, from_name, target_id, created_at, expires_at)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (initiator.user_id, initiator.user_name or initiator.user_id[:8], target_id, now, expires_at)
-        )
-        await self.db.conn.commit()
-        
-        target_name = target.user_name or target_id[:8]
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(initiator.user_id)
+                target = await self.db.get_player_by_id(target_id)
+                if not current or not target:
+                    return False, "❌ 对方还未踏入修仙之路。"
+                if current.has_partner():
+                    if current.partner_id == target_id:
+                        return False, "💡 你们已是道侣，请使用「道侣双修」指令。"
+                    return False, "❌ 你已有道侣，只能与道侣进行双修。"
+                if target.has_partner():
+                    return False, "❌ 对方已有道侣，无法与你双修。"
+
+                now = int(time.time())
+                last_dual = await self._get_last_dual_time(current.user_id)
+                if last_dual and (now - last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - last_dual)
+                    return False, f"❌ 双修冷却中，还需 {remaining // 60} 分钟。"
+                target_last_dual = await self._get_last_dual_time(target.user_id)
+                if target_last_dual and (now - target_last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - target_last_dual)
+                    return False, f"❌ 对方正在双修冷却，还需 {remaining // 60} 分钟。"
+
+                await self.db.conn.execute(
+                    "DELETE FROM dual_cultivation_requests WHERE target_id = ?",
+                    (target_id,),
+                    commit=False,
+                )
+                expires_at = now + PARTNER_REQUEST_EXPIRE
+                cursor = await self.db.conn.execute(
+                    """
+                    INSERT INTO dual_cultivation_requests (from_id, from_name, target_id, created_at, expires_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        current.user_id,
+                        current.user_name or current.user_id[:8],
+                        target_id,
+                        now,
+                        expires_at,
+                    ),
+                    commit=False,
+                )
+                if cursor.rowcount != 1:
+                    raise _DualAbort("双修请求创建失败")
+                target_name = target.user_name or target_id[:8]
+        except _DualAbort as exc:
+            return False, str(exc)
+
         return True, (
             f"💕 已向【{target_name}】发起双修请求！\n"
             f"对方使用「接受双修」或「拒绝双修」响应。\n"
@@ -1076,53 +1185,77 @@ class DualCultivationManager:
     
     async def accept_dual_request(self, acceptor: Player) -> Tuple[bool, str]:
         """接受普通双修请求"""
-        if acceptor.has_partner():
-            return False, "❌ 你已有道侣，只能与道侣进行双修。"
-        
-        request = await self._get_pending_dual_request(acceptor.user_id)
-        if not request:
-            return False, "❌ 没有待处理的双修请求。"
-        
-        initiator = await self.db.get_player_by_id(request["from_id"])
-        if not initiator:
-            await self._delete_dual_request(request["id"])
-            return False, "❌ 请求发起者数据异常。"
-        
-        if initiator.has_partner():
-            await self._delete_dual_request(request["id"])
-            return False, "❌ 对方已有道侣，无法与你双修。"
-        
-        now = int(time.time())
-        
-        acceptor_last_dual = await self._get_last_dual_time(acceptor.user_id)
-        if acceptor_last_dual and (now - acceptor_last_dual) < DUAL_CULT_COOLDOWN:
-            await self._delete_dual_request(request["id"])
-            remaining = DUAL_CULT_COOLDOWN - (now - acceptor_last_dual)
-            return False, f"❌ 你的双修冷却中，还需 {remaining // 60} 分钟。"
-        
-        initiator_last_dual = await self._get_last_dual_time(initiator.user_id)
-        if initiator_last_dual and (now - initiator_last_dual) < DUAL_CULT_COOLDOWN:
-            await self._delete_dual_request(request["id"])
-            remaining = DUAL_CULT_COOLDOWN - (now - initiator_last_dual)
-            return False, f"❌ 对方仍在双修冷却，还需 {remaining // 60} 分钟。"
-        
-        init_exp_gain = int(acceptor.experience * DUAL_CULT_BASE_EXP_BONUS)
-        accept_exp_gain = int(initiator.experience * DUAL_CULT_BASE_EXP_BONUS)
-        
-        initiator.experience += init_exp_gain
-        acceptor.experience += accept_exp_gain
-        await self.db.update_player(initiator)
-        await self.db.update_player(acceptor)
-        
-        await self._set_last_dual_time(initiator.user_id, now)
-        await self._set_last_dual_time(acceptor.user_id, now)
-        
-        await self._delete_dual_request(request["id"])
-        
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                current_acceptor = await self.db.get_player_by_id(acceptor.user_id)
+                if not current_acceptor or current_acceptor.has_partner():
+                    return False, "❌ 你已有道侣，只能与道侣进行双修。"
+
+                now = int(time.time())
+                request = await self._get_pending_dual_request(
+                    current_acceptor.user_id, commit=False
+                )
+                if not request:
+                    return False, "❌ 没有待处理的双修请求。"
+                initiator = await self.db.get_player_by_id(request["from_id"])
+                if not initiator:
+                    deleted = await self._delete_dual_request(
+                        request["id"],
+                        target_id=current_acceptor.user_id,
+                        expires_after=now,
+                        commit=False,
+                    )
+                    if deleted != 1:
+                        raise _DualAbort("双修请求状态已变化，请重试")
+                    return False, "❌ 请求发起者数据异常。"
+                if initiator.has_partner():
+                    deleted = await self._delete_dual_request(
+                        request["id"],
+                        from_id=initiator.user_id,
+                        target_id=current_acceptor.user_id,
+                        expires_after=now,
+                        commit=False,
+                    )
+                    if deleted != 1:
+                        raise _DualAbort("双修请求状态已变化，请重试")
+                    return False, "❌ 对方已有道侣，无法与你双修。"
+
+                acceptor_last_dual = await self._get_last_dual_time(current_acceptor.user_id)
+                if acceptor_last_dual and (now - acceptor_last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - acceptor_last_dual)
+                    return False, f"❌ 你的双修冷却中，还需 {remaining // 60} 分钟。"
+                initiator_last_dual = await self._get_last_dual_time(initiator.user_id)
+                if initiator_last_dual and (now - initiator_last_dual) < DUAL_CULT_COOLDOWN:
+                    remaining = DUAL_CULT_COOLDOWN - (now - initiator_last_dual)
+                    return False, f"❌ 对方仍在双修冷却，还需 {remaining // 60} 分钟。"
+
+                init_exp_gain = int(current_acceptor.experience * DUAL_CULT_BASE_EXP_BONUS)
+                accept_exp_gain = int(initiator.experience * DUAL_CULT_BASE_EXP_BONUS)
+                initiator.experience += init_exp_gain
+                current_acceptor.experience += accept_exp_gain
+                await self.db.update_player(initiator, commit=False)
+                await self.db.update_player(current_acceptor, commit=False)
+                await self._set_last_dual_time(initiator.user_id, now, commit=False)
+                await self._set_last_dual_time(current_acceptor.user_id, now, commit=False)
+                deleted = await self._delete_dual_request(
+                    request["id"],
+                    from_id=initiator.user_id,
+                    target_id=current_acceptor.user_id,
+                    expires_after=now,
+                    commit=False,
+                )
+                if deleted != 1:
+                    raise _DualAbort("双修请求状态已变化，请重试")
+                initiator_name = request["from_name"]
+        except _DualAbort as exc:
+            return False, str(exc)
+
+        acceptor.experience = current_acceptor.experience
         return True, (
             f"💕 双修成功！\n"
             f"━━━━━━━━━━━━━━━\n"
-            f"与【{request['from_name']}】双修\n"
+            f"与【{initiator_name}】双修\n"
             f"{request['from_name']} 获得修为：+{init_exp_gain:,}\n"
             f"你 获得修为：+{accept_exp_gain:,}\n"
             f"━━━━━━━━━━━━━━━\n"
@@ -1132,24 +1265,38 @@ class DualCultivationManager:
     
     async def reject_dual_request(self, rejecter_id: str) -> Tuple[bool, str]:
         """拒绝普通双修请求"""
-        request = await self._get_pending_dual_request(rejecter_id)
-        if not request:
-            return False, "❌ 没有待处理的双修请求。"
-        
-        from_name = request["from_name"]
-        await self._delete_dual_request(request["id"])
-        
+        await self.ensure_partner_tables()
+        try:
+            async with self.db.transaction():
+                request = await self._get_pending_dual_request(rejecter_id, commit=False)
+                if not request:
+                    return False, "❌ 没有待处理的双修请求。"
+                now = int(time.time())
+                deleted = await self._delete_dual_request(
+                    request["id"],
+                    from_id=request["from_id"],
+                    target_id=rejecter_id,
+                    expires_after=now,
+                    commit=False,
+                )
+                if deleted != 1:
+                    raise _DualAbort("双修请求状态已变化，请重试")
+                from_name = request["from_name"]
+        except _DualAbort as exc:
+            return False, str(exc)
         return True, f"已拒绝【{from_name}】的双修请求。"
     
-    async def _get_pending_dual_request(self, target_id: str) -> Optional[Dict]:
+    async def _get_pending_dual_request(self, target_id: str, *, commit: bool = True) -> Optional[Dict]:
         """获取待处理的双修请求"""
         now = int(time.time())
-        
+
         await self.db.conn.execute(
-            "DELETE FROM dual_cultivation_requests WHERE expires_at < ?",
-            (now,)
+            "DELETE FROM dual_cultivation_requests WHERE expires_at <= ?",
+            (now,),
+            commit=commit,
         )
-        await self.db.conn.commit()
+        if commit:
+            await self.db.conn.commit()
         
         async with self.db.conn.execute(
             """
@@ -1172,31 +1319,59 @@ class DualCultivationManager:
                 }
             return None
     
-    async def _delete_dual_request(self, request_id: int):
+    async def _delete_dual_request(
+        self,
+        request_id: int,
+        *,
+        from_id: str | None = None,
+        target_id: str | None = None,
+        expires_after: int | None = None,
+        commit: bool = True,
+    ):
         """删除双修请求"""
-        await self.db.conn.execute(
-            "DELETE FROM dual_cultivation_requests WHERE id = ?",
-            (request_id,)
+        clauses = ["id = ?"]
+        params = [request_id]
+        if from_id is not None:
+            clauses.append("from_id = ?")
+            params.append(from_id)
+        if target_id is not None:
+            clauses.append("target_id = ?")
+            params.append(target_id)
+        if expires_after is not None:
+            clauses.append("expires_at > ?")
+            params.append(expires_after)
+        cursor = await self.db.conn.execute(
+            "DELETE FROM dual_cultivation_requests WHERE " + " AND ".join(clauses),
+            tuple(params),
+            commit=commit,
         )
-        await self.db.conn.commit()
+        if commit:
+            await self.db.conn.commit()
+        return cursor.rowcount
     
     # ==================== 兼容旧接口 ====================
     
     async def daily_intimacy_gain(self, player: Player) -> Tuple[bool, int]:
         """每日互动增加亲密度（签到时调用）"""
-        if not player.has_partner():
+        try:
+            async with self.db.transaction():
+                current = await self.db.get_player_by_id(player.user_id)
+                if not current or not current.has_partner():
+                    return False, 0
+                partner = await self.db.get_player_by_id(current.partner_id)
+                if not partner or partner.partner_id != current.user_id:
+                    return False, 0
+
+                current.partner_intimacy += DAILY_INTIMACY_GAIN
+                partner.partner_intimacy += DAILY_INTIMACY_GAIN
+                await self.db.update_player(current, commit=False)
+                await self.db.update_player(partner, commit=False)
+        except _DualAbort as exc:
             return False, 0
-        
-        partner = await self.db.get_player_by_id(player.partner_id)
-        if not partner:
-            return False, 0
-        
-        player.partner_intimacy += DAILY_INTIMACY_GAIN
-        partner.partner_intimacy += DAILY_INTIMACY_GAIN
-        
-        await self.db.update_player(player)
-        await self.db.update_player(partner)
-        
+
+        player.partner_id = current.partner_id
+        player.partner_bindtime = current.partner_bindtime
+        player.partner_intimacy = current.partner_intimacy
         return True, DAILY_INTIMACY_GAIN
     
     def get_cultivation_efficiency_bonus(self, player: Player) -> float:

@@ -100,49 +100,14 @@ class AuctionHandlers:
             yield event.plain_result("起拍价必须大于0")
             return
         
-        # 检查物品来源
-        source_type = None
+        # The manager selects and removes the source item inside the same
+        # transaction as the auction insert.
         item_count = 1
-        
-        # 先检查储物戒
-        storage_count = self.storage_ring_mgr.get_item_count(player, item_name)
-        if storage_count > 0:
-            source_type = "storage"
-            item_count = 1  # 默认上架1个
-        else:
-            # 检查丹药背包
-            pills = player.get_pills_inventory()
-            if item_name in pills and pills[item_name] > 0:
-                source_type = "pill"
-                item_count = 1
-        
-        if not source_type:
-            yield event.plain_result(
-                f"你没有【{item_name}】！\n"
-                f"请检查储物戒或丹药背包。"
-            )
-            return
-        
-        # 从背包中扣除物品
-        if source_type == "storage":
-            success, msg = await self.storage_ring_mgr.retrieve_item(player, item_name, item_count)
-            if not success:
-                yield event.plain_result(f"上架失败：{msg}")
-                return
-        else:
-            pills = player.get_pills_inventory()
-            pills[item_name] -= item_count
-            if pills[item_name] <= 0:
-                del pills[item_name]
-            player.set_pills_inventory(pills)
-            await self.db.update_player(player)
-        
-        # 创建拍卖
         success, msg, auction = await self.auction_mgr.create_auction(
             player=player,
             item_name=item_name,
-            item_count=item_count,
-            source_type=source_type,
+            item_count=1,
+            source_type="auto",
             starting_price=starting_price,
             buyout_price=buyout_price,
             duration_minutes=duration
@@ -168,15 +133,6 @@ class AuctionHandlers:
             )
             yield event.plain_result(result_msg)
         else:
-            # 上架失败，返还物品
-            if source_type == "storage":
-                await self.storage_ring_mgr.store_item(player, item_name, item_count, silent=True)
-            else:
-                pills = player.get_pills_inventory()
-                pills[item_name] = pills.get(item_name, 0) + item_count
-                player.set_pills_inventory(pills)
-                await self.db.update_player(player)
-            
             yield event.plain_result(f"❌ 上架失败：{msg}")
     
     @player_required
@@ -226,26 +182,9 @@ class AuctionHandlers:
             )
             return
         
-        # 获取拍卖信息
-        auction = await self.auction_mgr.get_auction_by_id(auction_id)
-        if not auction:
-            yield event.plain_result("拍卖不存在")
-            return
-        
         success, msg = await self.auction_mgr.cancel_auction(player, auction_id)
-        
+
         if success:
-            # 返还物品
-            if auction.source_type == "pill":
-                pills = player.get_pills_inventory()
-                pills[auction.item_name] = pills.get(auction.item_name, 0) + auction.item_count
-                player.set_pills_inventory(pills)
-                await self.db.update_player(player)
-            else:
-                await self.storage_ring_mgr.store_item(
-                    player, auction.item_name, auction.item_count, silent=True
-                )
-            
             yield event.plain_result(
                 f"✅ {msg}\n"
                 f"物品已返还到你的背包"
@@ -317,46 +256,13 @@ class AuctionHandlers:
             yield event.plain_result(f"用法：{CMD_AUCTION_CLAIM} 拍卖ID")
             return
         
-        auction = await self.auction_mgr.get_auction_by_id(auction_id)
-        if not auction:
-            yield event.plain_result("拍卖不存在")
-            return
-        
-        # 判断领取类型
-        if auction.status == AuctionStatus.CANCELLED and auction.seller_id == player.user_id:
-            # 流拍取回
-            success, msg, source_type = await self.auction_mgr.claim_unsold_item(player, auction_id)
-        else:
-            # 拍得/抢夺领取
-            success, msg, source_type = await self.auction_mgr.claim_auction_item(player, auction_id)
+        success, msg, source_type = await self.auction_mgr.claim_item(player, auction_id)
         
         if not success:
             yield event.plain_result(f"❌ {msg}")
             return
         
-        # 将物品存入背包
-        if source_type == "pill" or self.storage_ring_mgr.is_pill(auction.item_name):
-            pills = player.get_pills_inventory()
-            pills[auction.item_name] = pills.get(auction.item_name, 0) + auction.item_count
-            player.set_pills_inventory(pills)
-            await self.db.update_player(player)
-            location = "丹药背包"
-        else:
-            store_success, store_msg = await self.storage_ring_mgr.store_item(
-                player, auction.item_name, auction.item_count
-            )
-            if not store_success:
-                yield event.plain_result(f"❌ 领取失败：{store_msg}")
-                return
-            location = "储物戒"
-        
-        # 删除拍卖记录（或标记为已领取）
-        await self.db.conn.execute(
-            "DELETE FROM auction_items WHERE id = ?",
-            (auction_id,)
-        )
-        await self.db.conn.commit()
-        
+        location = "丹药背包" if source_type == "pill" else "储物戒"
         yield event.plain_result(
             f"✅ {msg}\n"
             f"已存入{location}"
@@ -436,22 +342,8 @@ class AuctionHandlers:
                 )
         
         if success and battle_result:
-            # 抢夺成功，将物品存入抢夺者背包
-            # 重新获取最新的player数据（因为HP已更新）
-            player = await self.db.get_player_by_id(player.user_id)
-            auction = await self.auction_mgr.get_auction_by_id(auction_id)
-            if auction and player:
-                if auction.source_type == "pill" or self.storage_ring_mgr.is_pill(auction.item_name):
-                    pills = player.get_pills_inventory()
-                    pills[auction.item_name] = pills.get(auction.item_name, 0) + auction.item_count
-                    player.set_pills_inventory(pills)
-                    await self.db.update_player(player)
-                else:
-                    await self.storage_ring_mgr.store_item(
-                        player, auction.item_name, auction.item_count, silent=True
-                    )
-            
-            # 添加HP扣除提示
+            # The successful robbery is now committed as a completed auction;
+            # the robber claims the escrowed item through the claim command.
             msg += "\n\n⚠️ 决斗模式：双方HP已实际扣除"
         
         yield event.plain_result(msg)
