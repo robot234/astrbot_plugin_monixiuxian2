@@ -447,97 +447,103 @@ class BankManager:
     
     async def deposit(self, player: Player, amount: int) -> Tuple[bool, str]:
         """存入灵石"""
-        if amount <= 0:
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "存款金额必须大于0。"
-        
-        await self.db.conn.execute("BEGIN IMMEDIATE")
-        try:
-            player = await self.db.get_player_by_id(player.user_id)
-            if player.gold < amount:
-                await self.db.conn.rollback()
-                return False, f"灵石不足！你只有 {player.gold:,} 灵石。"
-            
-            bank_data = await self.db.ext.get_bank_account(player.user_id)
+
+        async with self.db.transaction() as tx:
+            current_player = await self.db.get_player_by_id(player.user_id)
+            if not current_player:
+                return False, "玩家不存在或已被删除。"
+            if current_player.gold < amount:
+                return False, f"灵石不足！你只有 {current_player.gold:,} 灵石。"
+
+            bank_data = await self.db.ext.get_bank_account(current_player.user_id)
             current_balance = bank_data["balance"] if bank_data else 0
-            
             if current_balance + amount > self.max_deposit:
-                await self.db.conn.rollback()
                 return False, f"存款上限为 {self.max_deposit:,} 灵石，当前余额 {current_balance:,}。"
-            
-            player.gold -= amount
-            await self.db.update_player(player)
-            
+
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (amount, current_player.user_id, amount)
+            )
+            if cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "灵石不足或玩家状态已变化，请重试。"
+
             new_balance = current_balance + amount
             now = int(time.time())
             await self.db.ext.update_bank_account(
-                player.user_id, 
-                new_balance, 
-                now if current_balance == 0 else bank_data["last_interest_time"]
+                current_player.user_id,
+                new_balance,
+                now if current_balance == 0 else bank_data["last_interest_time"],
+                commit=False,
             )
-            
-            await self._add_transaction(player.user_id, "deposit", amount, new_balance, "存入灵石")
-            
-            await self.db.conn.commit()
+            await self._add_transaction(
+                current_player.user_id, "deposit", amount, new_balance, "存入灵石", commit=False
+            )
+            player.gold = current_player.gold - amount
             return True, f"成功存入 {amount:,} 灵石！\n当前余额：{new_balance:,} 灵石"
-        except Exception as e:
-            await self.db.conn.rollback()
-            raise
     
     async def withdraw(self, player: Player, amount: int) -> Tuple[bool, str]:
         """取出灵石"""
-        if amount <= 0:
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "取款金额必须大于0。"
-        
-        await self.db.conn.execute("BEGIN IMMEDIATE")
-        try:
-            player = await self.db.get_player_by_id(player.user_id)
+
+        async with self.db.transaction() as tx:
+            current_player = await self.db.get_player_by_id(player.user_id)
             bank_data = await self.db.ext.get_bank_account(player.user_id)
-            if not bank_data or bank_data["balance"] < amount:
-                await self.db.conn.rollback()
-                current = bank_data["balance"] if bank_data else 0
+            current = bank_data["balance"] if bank_data else 0
+            if not current_player:
+                return False, "玩家不存在或已被删除。"
+            if not bank_data or current < amount:
                 return False, f"余额不足！当前余额：{current:,} 灵石。"
-            
-            new_balance = bank_data["balance"] - amount
-            await self.db.ext.update_bank_account(
-                player.user_id, 
-                new_balance, 
-                bank_data["last_interest_time"]
+
+            new_balance = current - amount
+            cursor = await self.db.conn.execute(
+                "UPDATE bank_accounts SET balance = balance - ? WHERE user_id = ? AND balance >= ?",
+                (amount, current_player.user_id, amount)
             )
-            
-            player.gold += amount
-            await self.db.update_player(player)
-            
-            await self._add_transaction(player.user_id, "withdraw", -amount, new_balance, "取出灵石")
-            
-            await self.db.conn.commit()
-            return True, f"成功取出 {amount:,} 灵石！\n当前余额：{new_balance:,} 灵石\n当前持有：{player.gold:,} 灵石"
-        except Exception as e:
-            await self.db.conn.rollback()
-            raise
+            if cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "余额不足或账户状态已变化，请重试。"
+            player_cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold + ? WHERE user_id = ?",
+                (amount, current_player.user_id)
+            )
+            if player_cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "玩家状态已变化，请重试。"
+            await self._add_transaction(
+                current_player.user_id, "withdraw", -amount, new_balance, "取出灵石", commit=False
+            )
+            player.gold = current_player.gold + amount
+            return True, f"成功取出 {amount:,} 灵石！\n当前余额：{new_balance:,} 灵石\n当前持有：{current_player.gold + amount:,} 灵石"
     
     async def claim_interest(self, player: Player) -> Tuple[bool, str]:
         """领取利息"""
-        bank_data = await self.db.ext.get_bank_account(player.user_id)
-        if not bank_data or bank_data["balance"] <= 0:
-            return False, "你还没有存款，无法领取利息。"
-        
-        interest = self._calculate_interest(
-            bank_data["balance"], 
-            bank_data["last_interest_time"]
-        )
-        
-        if interest <= 0:
-            return False, "利息不足1灵石，请明日再来。"
-        
-        # 利息转入本金
-        new_balance = bank_data["balance"] + interest
-        now = int(time.time())
-        await self.db.ext.update_bank_account(player.user_id, new_balance, now)
-        
-        # 记录流水
-        await self._add_transaction(player.user_id, "interest", interest, new_balance, "领取利息")
-        
-        return True, f"成功领取利息 {interest:,} 灵石！\n当前余额：{new_balance:,} 灵石"
+
+        async with self.db.transaction() as tx:
+            bank_data = await self.db.ext.get_bank_account(player.user_id)
+            if not bank_data or bank_data["balance"] <= 0:
+                return False, "你还没有存款，无法领取利息。"
+            interest = self._calculate_interest(bank_data["balance"], bank_data["last_interest_time"])
+            if interest <= 0:
+                return False, "利息不足1灵石，请明日再来。"
+
+            new_balance = bank_data["balance"] + interest
+            now = int(time.time())
+            cursor = await self.db.conn.execute(
+                "UPDATE bank_accounts SET balance = ?, last_interest_time = ? "
+                "WHERE user_id = ? AND balance = ? AND last_interest_time = ?",
+                (new_balance, now, player.user_id, bank_data["balance"], bank_data["last_interest_time"])
+            )
+            if cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "账户状态已变化，请重试。"
+            await self._add_transaction(
+                player.user_id, "interest", interest, new_balance, "领取利息", commit=False
+            )
+            return True, f"成功领取利息 {interest:,} 灵石！\n当前余额：{new_balance:,} 灵石"
     
     # ===== 贷款相关 =====
     
@@ -574,42 +580,42 @@ class BankManager:
             amount: 贷款金额
             loan_type: 贷款类型 (normal/breakthrough)
         """
-        # 获取玩家的有效贷款上限（包含挑战提升）
-        player_loan_limit = await self.get_player_effective_loan_limit(player)
-        current_tier = await self.get_player_loan_tier(player)
-        current_tier_realm = get_tier_realm_name(current_tier)
-        
-        if amount < self.min_loan_amount:
-            return False, f"最小贷款金额为 {self.min_loan_amount:,} 灵石。"
-        
-        if amount > player_loan_limit:
-            # 显示当前额度等级和挑战提示
-            next_tier = current_tier + 1
-            challenge_hint = ""
-            if next_tier <= 5:
-                next_examiner = BANK_EXAMINERS.get(next_tier)
-                if next_examiner:
-                    next_limit = get_max_loan_for_tier(next_tier)
-                    challenge_hint = (
-                        f"\n💡 挑战【{next_examiner['name']}】可提升至 {next_limit:,} 灵石"
-                        f"\n   使用 /挑战银行 {next_tier} 发起挑战"
-                    )
-            
-            return False, (
-                f"❌ 贷款金额超出上限！\n"
-                f"━━━━━━━━━━━━━━━\n"
-                f"额度等级：{current_tier_realm}\n"
-                f"贷款上限：{player_loan_limit:,} 灵石{challenge_hint}"
-            )
-        
-        await self.db.conn.execute("BEGIN IMMEDIATE")
-        try:
-            player = await self.db.get_player_by_id(player.user_id)
-            existing_loan = await self.db.ext.get_active_loan(player.user_id)
+        if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+            return False, "贷款金额必须是大于0的整数。"
+
+        async with self.db.transaction() as tx:
+            current_player = await self.db.get_player_by_id(player.user_id)
+            if not current_player:
+                return False, "玩家不存在或已被删除。"
+
+            # Re-read the realm/tier while owning the transaction.  A caller's
+            # Player object may be stale after a concurrent breakthrough.
+            player_loan_limit = await self.get_player_effective_loan_limit(current_player)
+            current_tier = await self.get_player_loan_tier(current_player)
+            current_tier_realm = get_tier_realm_name(current_tier)
+            if amount < self.min_loan_amount:
+                return False, f"最小贷款金额为 {self.min_loan_amount:,} 灵石。"
+            if amount > player_loan_limit:
+                next_tier = current_tier + 1
+                challenge_hint = ""
+                if next_tier <= 5:
+                    next_examiner = BANK_EXAMINERS.get(next_tier)
+                    if next_examiner:
+                        next_limit = get_max_loan_for_tier(next_tier)
+                        challenge_hint = (
+                            f"\n💡 挑战【{next_examiner['name']}】可提升至 {next_limit:,} 灵石"
+                            f"\n   使用 /挑战银行 {next_tier} 发起挑战"
+                        )
+                return False, (
+                    f"❌ 贷款金额超出上限！\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"额度等级：{current_tier_realm}\n"
+                    f"贷款上限：{player_loan_limit:,} 灵石{challenge_hint}"
+                )
+            existing_loan = await self.db.ext.get_active_loan(current_player.user_id)
             if existing_loan:
-                await self.db.conn.rollback()
                 return False, "你已有未还清的贷款，请先还款后再申请新贷款。"
-            
+
             if loan_type == "breakthrough":
                 interest_rate = self.breakthrough_loan_rate
                 duration_days = self.breakthrough_loan_duration
@@ -622,21 +628,31 @@ class BankManager:
             now = int(time.time())
             due_at = now + duration_days * 86400
             
-            await self.db.ext.create_loan(
-                player.user_id, amount, interest_rate, now, due_at, loan_type
+            loan_id = await self.db.ext.create_loan(
+                current_player.user_id, amount, interest_rate, now, due_at, loan_type, commit=False
             )
-            
-            player.gold += amount
-            await self.db.update_player(player)
-            
-            bank_data = await self.db.ext.get_bank_account(player.user_id)
+            if not loan_id:
+                tx.mark_rollback_only()
+                return False, "贷款记录创建失败，请重试。"
+
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold + ? WHERE user_id = ?",
+                (amount, current_player.user_id)
+            )
+            if cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "玩家状态已变化，请重试。"
+
+            bank_data = await self.db.ext.get_bank_account(current_player.user_id)
             balance = bank_data["balance"] if bank_data else 0
-            await self._add_transaction(player.user_id, "loan", amount, balance, f"{type_name}：借入{amount:,}灵石")
+            await self._add_transaction(
+                current_player.user_id, "loan", amount, balance, f"{type_name}：借入{amount:,}灵石", commit=False
+            )
+            player.gold = current_player.gold + amount
             
             total_interest = int(amount * interest_rate * duration_days)
             total_due = amount + total_interest
             
-            await self.db.conn.commit()
             return True, (
                 f"💰 {type_name}成功！\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -645,50 +661,57 @@ class BankManager:
                 f"还款期限：{duration_days} 天\n"
                 f"到期应还：约 {total_due:,} 灵石\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"当前持有：{player.gold:,} 灵石\n"
+                f"当前持有：{current_player.gold + amount:,} 灵石\n"
                 f"💀 逾期将被银行追杀致死！"
             )
-        except Exception as e:
-            await self.db.conn.rollback()
-            raise
     
     async def repay(self, player: Player) -> Tuple[bool, str]:
         """还款"""
-        await self.db.conn.execute("BEGIN IMMEDIATE")
-        try:
-            player = await self.db.get_player_by_id(player.user_id)
-            loan_info = await self.get_loan_info(player)
+        async with self.db.transaction() as tx:
+            current_player = await self.db.get_player_by_id(player.user_id)
+            if not current_player:
+                return False, "玩家不存在或已被删除。"
+            loan_info = await self.get_loan_info(current_player)
             if not loan_info:
-                await self.db.conn.rollback()
                 return False, "你当前没有需要偿还的贷款。"
-            
+
             total_due = loan_info["total_due"]
-            
-            if player.gold < total_due:
-                await self.db.conn.rollback()
+
+            if current_player.gold < total_due:
                 return False, (
                     f"灵石不足！\n"
                     f"应还金额：{total_due:,} 灵石\n"
                     f"（本金 {loan_info['principal']:,} + 利息 {loan_info['current_interest']:,}）\n"
-                    f"当前持有：{player.gold:,} 灵石\n"
-                    f"还差：{total_due - player.gold:,} 灵石"
+                    f"当前持有：{current_player.gold:,} 灵石\n"
+                    f"还差：{total_due - current_player.gold:,} 灵石"
                 )
-            
-            player.gold -= total_due
-            await self.db.update_player(player)
-            
-            await self.db.ext.close_loan(loan_info["id"])
-            
-            bank_data = await self.db.ext.get_bank_account(player.user_id)
+
+            cursor = await self.db.conn.execute(
+                "UPDATE players SET gold = gold - ? WHERE user_id = ? AND gold >= ?",
+                (total_due, current_player.user_id, total_due)
+            )
+            if cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "灵石不足或玩家状态已变化，请重试。"
+            loan_cursor = await self.db.conn.execute(
+                "UPDATE bank_loans SET status = 'closed' WHERE id = ? AND status = 'active'",
+                (loan_info["id"],)
+            )
+            if loan_cursor.rowcount != 1:
+                tx.mark_rollback_only()
+                return False, "贷款状态已变化，请重试。"
+
+            bank_data = await self.db.ext.get_bank_account(current_player.user_id)
             balance = bank_data["balance"] if bank_data else 0
             await self._add_transaction(
-                player.user_id, "repay", -total_due, balance, 
-                f"还款：本金{loan_info['principal']:,}+利息{loan_info['current_interest']:,}"
+                current_player.user_id, "repay", -total_due, balance,
+                f"还款：本金{loan_info['principal']:,}+利息{loan_info['current_interest']:,}",
+                commit=False,
             )
+            player.gold = current_player.gold - total_due
             
             loan_type_name = "突破贷款" if loan_info["loan_type"] == "breakthrough" else "普通贷款"
             
-            await self.db.conn.commit()
             return True, (
                 f"✅ 还款成功！\n"
                 f"━━━━━━━━━━━━━━━\n"
@@ -697,11 +720,8 @@ class BankManager:
                 f"已还利息：{loan_info['current_interest']:,} 灵石\n"
                 f"合计支付：{total_due:,} 灵石\n"
                 f"━━━━━━━━━━━━━━━\n"
-                f"当前持有：{player.gold:,} 灵石"
+                f"当前持有：{current_player.gold - total_due:,} 灵石"
             )
-        except Exception as e:
-            await self.db.conn.rollback()
-            raise
     
     async def check_and_process_overdue_loans(self) -> List[dict]:
         """检查并处理逾期贷款 - 逾期玩家将被银行追杀致死
@@ -712,28 +732,32 @@ class BankManager:
         now = int(time.time())
         overdue_loans = await self.db.ext.get_overdue_loans(now)
         processed = []
-        
+
         for loan in overdue_loans:
             player = await self.db.get_player_by_id(loan["user_id"])
             if not player:
                 # 玩家已不存在，直接关闭贷款
-                await self.db.ext.mark_loan_overdue(loan["id"])
+                async with self.db.transaction():
+                    await self.db.ext.mark_loan_overdue(loan["id"], commit=False)
                 continue
-            
+
             player_name = player.user_name or f"道友{player.user_id[:6]}"
-            
-            # 删除玩家数据（银行追杀致死）- 级联删除所有关联数据
-            await self.db.delete_player_cascade(player.user_id)
-            
-            # 标记贷款逾期
-            await self.db.ext.mark_loan_overdue(loan["id"])
-            
-            # 记录流水
-            await self._add_transaction(
-                loan["user_id"], "bank_kill", 0, 0,
-                f"逾期未还款，被银行追杀致死"
-            )
-            
+            async with self.db.transaction():
+                # Re-check the loan while owning the transaction so a
+                # concurrent repayment cannot be followed by a deletion.
+                active_loan = await self.db.ext.get_active_loan(player.user_id)
+                if not active_loan or active_loan["id"] != loan["id"]:
+                    continue
+
+                # Delete the player, mark the loan, and write the ledger entry
+                # as one atomic operation.
+                await self.db.delete_player_cascade(player.user_id, commit=False)
+                await self.db.ext.mark_loan_overdue(loan["id"], commit=False)
+                await self._add_transaction(
+                    loan["user_id"], "bank_kill", 0, 0,
+                    "逾期未还款，被银行追杀致死", commit=False
+                )
+
             processed.append({
                 **loan,
                 "player_name": player_name,
@@ -744,12 +768,12 @@ class BankManager:
     
     # ===== 流水相关 =====
     
-    async def _add_transaction(self, user_id: str, trans_type: str, amount: int, 
-                                balance_after: int, description: str):
+    async def _add_transaction(self, user_id: str, trans_type: str, amount: int,
+                                balance_after: int, description: str, *, commit: bool = True):
         """添加交易流水"""
         now = int(time.time())
         await self.db.ext.add_bank_transaction(
-            user_id, trans_type, amount, balance_after, description, now
+            user_id, trans_type, amount, balance_after, description, now, commit=commit
         )
     
     async def get_transactions(self, user_id: str, limit: int = 20) -> List[dict]:

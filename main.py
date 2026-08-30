@@ -357,14 +357,32 @@ class XiuXianPlugin(Star):
         logger.info("【修仙插件】已加载。")
 
     async def terminate(self):
-        if self.boss_task:
-            self.boss_task.cancel()
-        if self.loan_check_task:
-            self.loan_check_task.cancel()
-        if self.bounty_check_task:
-            self.bounty_check_task.cancel()
-        if self.auction_task:
-            self.auction_task.cancel()
+        task_fields = (
+            "boss_task",
+            "loan_check_task",
+            "bounty_check_task",
+            "auction_task",
+        )
+        tasks = []
+        for field in task_fields:
+            task = getattr(self, field, None)
+            if task is not None:
+                tasks.append((field, task))
+                if not task.done():
+                    task.cancel()
+
+        if tasks:
+            results = await asyncio.gather(
+                *(task for _, task in tasks), return_exceptions=True
+            )
+            for (field, _), result in zip(tasks, results):
+                if isinstance(result, BaseException) and not isinstance(
+                    result, asyncio.CancelledError
+                ):
+                    logger.error(f"【修仙插件】后台任务 {field} 终止时异常：{result}")
+            for field, _ in tasks:
+                setattr(self, field, None)
+
         await self.db.close()
         logger.info("【修仙插件】已卸载。")
         

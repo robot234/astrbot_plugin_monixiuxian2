@@ -8,6 +8,7 @@ from typing import Tuple, List, Optional
 from astrbot.api import logger
 from ..models import Player
 from .database_extended import DatabaseExtended
+from .transaction import ManagedConnection, TransactionGate, TransactionStateError
 
 # 获取 Player 模型的所有字段名（用于过滤数据库中的多余字段，作为迁移未完成时的兼容）
 PLAYER_FIELDS = {f.name for f in fields(Player)}
@@ -17,13 +18,16 @@ class DataBase:
 
     def __init__(self, db_file: str = "xiuxian_data_lite.db"):
         self.db_path = Path(db_file)
-        self.conn: aiosqlite.Connection = None
+        self.conn: ManagedConnection = None
+        self.gate: TransactionGate = None
         self.ext: Optional[DatabaseExtended] = None  # 扩展操作类
 
     async def connect(self):
         """连接数据库"""
-        self.conn = await aiosqlite.connect(self.db_path)
-        self.conn.row_factory = aiosqlite.Row
+        raw = await aiosqlite.connect(self.db_path)
+        raw.row_factory = aiosqlite.Row
+        self.gate = TransactionGate(raw)
+        self.conn = ManagedConnection(raw, self.gate)
         self.ext = DatabaseExtended(self.conn)  # 初始化扩展操作
 
     async def close(self):
@@ -33,6 +37,7 @@ class DataBase:
                 await self.conn.close()
             finally:
                 self.conn = None
+                self.gate = None
                 self.ext = None
 
     async def reconnect(self):
@@ -45,7 +50,8 @@ class DataBase:
         if not self.conn:
             return False
         # aiosqlite Connection 在 close 后会将 _connection 置为 None
-        return getattr(self.conn, "_connection", None) is not None
+        raw = getattr(self.conn, "raw", None)
+        return raw is not None and getattr(raw, "_connection", None) is not None and not self.gate.unhealthy
 
     async def ensure_connection(self):
         """确保数据库连接可用，必要时自动重连"""
@@ -54,7 +60,13 @@ class DataBase:
         logger.warning("[database] 检测到数据库连接断开，正在自动重连...")
         await self.reconnect()
 
-    async def create_player(self, player: Player):
+    def transaction(self, *, immediate: bool = True):
+        """Return a task-owned transaction context shared by all DB helpers."""
+        if not self.gate:
+            raise TransactionStateError("database is not connected")
+        return self.gate.transaction(immediate=immediate)
+
+    async def create_player(self, player: Player, *, commit: bool = True):
         """创建新玩家"""
         await self.conn.execute(
             """
@@ -134,9 +146,11 @@ class DataBase:
                 player.partner_id,
                 player.partner_bindtime,
                 player.partner_intimacy
-            )
+            ),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
 
     async def get_player_by_id(self, user_id: str) -> Player:
         """根据用户ID获取玩家信息"""
@@ -163,7 +177,7 @@ class DataBase:
                 return Player(**filtered_data)
             return None
 
-    async def update_player(self, player: Player):
+    async def update_player(self, player: Player, *, commit: bool = True):
         """更新玩家信息"""
         await self.conn.execute(
             """
@@ -286,48 +300,74 @@ class DataBase:
                 player.partner_bindtime,
                 player.partner_intimacy,
                 player.user_id
-            )
+            ),
+            commit=commit,
         )
-        await self.conn.commit()
+        if commit:
+            await self.conn.commit()
 
-    async def delete_player(self, user_id: str):
+    async def delete_player(self, user_id: str, *, commit: bool = True):
         """删除玩家"""
         await self.conn.execute(
             "DELETE FROM players WHERE user_id = ?",
-            (user_id,)
+            (user_id,),
+            commit=commit,
         )
-        await self.conn.commit()
-
-    async def delete_player_cascade(self, user_id: str):
+        if commit:
+            await self.conn.commit()
+    async def delete_player_cascade(self, user_id: str, *, commit: bool = True):
         """级联删除玩家及所有关联数据"""
-        async def safe_execute(sql: str, params: tuple):
-            try:
-                await self.conn.execute(sql, params)
-            except Exception as e:
-                sql_preview = sql.strip().split(" ")[0]
-                logger.warning(f"[delete_player_cascade] 忽略执行 {sql_preview}: {e}")
+        async def delete_in_transaction():
+            statements = [
+                (
+                    "UPDATE spirit_eyes SET owner_id = NULL, owner_name = NULL, "
+                    "claim_time = NULL WHERE owner_id = ?",
+                    (user_id,),
+                ),
+                ("DELETE FROM blessed_lands WHERE user_id = ?", (user_id,)),
+                ("DELETE FROM spirit_farms WHERE user_id = ?", (user_id,)),
+                ("DELETE FROM bank_accounts WHERE user_id = ?", (user_id,)),
+                (
+                    "UPDATE bank_loans SET status = 'bad_debt' "
+                    "WHERE user_id = ? AND status = 'active'",
+                    (user_id,),
+                ),
+                ("DELETE FROM bounty_tasks WHERE user_id = ?", (user_id,)),
+                ("DELETE FROM dual_cultivation WHERE user_id = ?", (user_id,)),
+                (
+                    "DELETE FROM dual_cultivation_requests "
+                    "WHERE from_id = ? OR target_id = ?",
+                    (user_id, user_id),
+                ),
+                ("DELETE FROM user_cd WHERE user_id = ?", (user_id,)),
+                ("DELETE FROM buff_info WHERE user_id = ?", (user_id,)),
+                ("DELETE FROM impart_info WHERE user_id = ?", (user_id,)),
+                # combat_cooldowns has one user_id column, not attacker/defender
+                # columns from the old in-memory combat representation.
+                ("DELETE FROM combat_cooldowns WHERE user_id = ?", (user_id,)),
+                (
+                    "DELETE FROM pending_gifts "
+                    "WHERE sender_id = ? OR receiver_id = ?",
+                    (user_id, user_id),
+                ),
+            ]
 
-        statements = [
-            ("UPDATE spirit_eyes SET owner_id = NULL, owner_name = NULL, claim_time = NULL WHERE owner_id = ?", (user_id,)),
-            ("DELETE FROM blessed_lands WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM spirit_farms WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM bank_accounts WHERE user_id = ?", (user_id,)),
-            ("UPDATE bank_loans SET status = 'bad_debt' WHERE user_id = ? AND status = 'active'", (user_id,)),
-            ("DELETE FROM bounty_tasks WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM dual_cultivation WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM dual_cultivation_requests WHERE from_id = ? OR target_id = ?", (user_id, user_id)),
-            ("DELETE FROM user_cd WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM buff_info WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM impart_info WHERE user_id = ?", (user_id,)),
-            ("DELETE FROM combat_cooldowns WHERE attacker_id = ? OR defender_id = ?", (user_id, user_id)),
-            ("DELETE FROM pending_gifts WHERE sender_id = ? OR receiver_id = ?", (user_id, user_id)),
-        ]
+            for sql, params in statements:
+                # A cascade is all-or-nothing.  Missing tables/columns and
+                # other structural errors must abort the owning transaction.
+                await self.conn.execute(sql, params, commit=False)
 
-        for sql, params in statements:
-            await safe_execute(sql, params)
+            await self.conn.execute(
+                "DELETE FROM players WHERE user_id = ?", (user_id,), commit=False
+            )
 
-        await self.conn.execute("DELETE FROM players WHERE user_id = ?", (user_id,))
-        await self.conn.commit()
+        if commit:
+            async with self.transaction():
+                await delete_in_transaction()
+        else:
+            # commit=False is intentionally owner-only, matching all other
+            # structured DB helpers.
+            await delete_in_transaction()
 
     async def get_all_players(self):
         """获取所有玩家"""

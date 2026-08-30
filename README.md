@@ -4,7 +4,7 @@
   <img src="logo.png" alt="模拟修仙" width="200">
 </p>
 
-> **版本:** v3.1.4.11  
+> **版本:** v3.1.4.12<br>
 > **许可证:** AGPL-3.0  
 > **作者:** xiaojuwa  
 > **基于:** [nonebot_plugin_xiuxian_2](https://github.com/xiuxian-2/nonebot_plugin_xiuxian_2) (部分借鉴与重构)
@@ -305,6 +305,13 @@ astrbot_plugin_monixiuxian2/
 ---
 
 ## 📝 更新日志
+
+### v3.1.4.12 - 核心事务与并发安全收口
+
+- 引入任务归属的 `TransactionGate` / `ManagedConnection`，统一单连接 SQLite 的事务边界与取消清理
+- 强化 v1/v2 数据迁移到 v23 的字段映射、幂等性与版本上限安全；数据库 schema 仍为 v23
+- 银行、拍卖、赠礼、双修、共享灵石与储物戒关键流程改为原子提交，补齐并发竞态与失败回滚保护
+- 插件 `terminate()` 会等待后台任务完成取消和事务清理后再关闭数据库
 
 ### v3.1.4.11 - 修复拍卖系统配置异常
 
