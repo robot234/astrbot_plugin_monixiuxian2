@@ -450,7 +450,7 @@ class BankManager:
         if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "存款金额必须大于0。"
 
-        async with self.db.transaction():
+        async with self.db.transaction() as tx:
             current_player = await self.db.get_player_by_id(player.user_id)
             if not current_player:
                 return False, "玩家不存在或已被删除。"
@@ -467,6 +467,7 @@ class BankManager:
                 (amount, current_player.user_id, amount)
             )
             if cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "灵石不足或玩家状态已变化，请重试。"
 
             new_balance = current_balance + amount
@@ -488,7 +489,7 @@ class BankManager:
         if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "取款金额必须大于0。"
 
-        async with self.db.transaction():
+        async with self.db.transaction() as tx:
             current_player = await self.db.get_player_by_id(player.user_id)
             bank_data = await self.db.ext.get_bank_account(player.user_id)
             current = bank_data["balance"] if bank_data else 0
@@ -503,12 +504,14 @@ class BankManager:
                 (amount, current_player.user_id, amount)
             )
             if cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "余额不足或账户状态已变化，请重试。"
             player_cursor = await self.db.conn.execute(
                 "UPDATE players SET gold = gold + ? WHERE user_id = ?",
                 (amount, current_player.user_id)
             )
             if player_cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "玩家状态已变化，请重试。"
             await self._add_transaction(
                 current_player.user_id, "withdraw", -amount, new_balance, "取出灵石", commit=False
@@ -519,7 +522,7 @@ class BankManager:
     async def claim_interest(self, player: Player) -> Tuple[bool, str]:
         """领取利息"""
 
-        async with self.db.transaction():
+        async with self.db.transaction() as tx:
             bank_data = await self.db.ext.get_bank_account(player.user_id)
             if not bank_data or bank_data["balance"] <= 0:
                 return False, "你还没有存款，无法领取利息。"
@@ -535,6 +538,7 @@ class BankManager:
                 (new_balance, now, player.user_id, bank_data["balance"], bank_data["last_interest_time"])
             )
             if cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "账户状态已变化，请重试。"
             await self._add_transaction(
                 player.user_id, "interest", interest, new_balance, "领取利息", commit=False
@@ -579,7 +583,7 @@ class BankManager:
         if isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
             return False, "贷款金额必须是大于0的整数。"
 
-        async with self.db.transaction():
+        async with self.db.transaction() as tx:
             current_player = await self.db.get_player_by_id(player.user_id)
             if not current_player:
                 return False, "玩家不存在或已被删除。"
@@ -628,6 +632,7 @@ class BankManager:
                 current_player.user_id, amount, interest_rate, now, due_at, loan_type, commit=False
             )
             if not loan_id:
+                tx.mark_rollback_only()
                 return False, "贷款记录创建失败，请重试。"
 
             cursor = await self.db.conn.execute(
@@ -635,6 +640,7 @@ class BankManager:
                 (amount, current_player.user_id)
             )
             if cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "玩家状态已变化，请重试。"
 
             bank_data = await self.db.ext.get_bank_account(current_player.user_id)
@@ -661,7 +667,7 @@ class BankManager:
     
     async def repay(self, player: Player) -> Tuple[bool, str]:
         """还款"""
-        async with self.db.transaction():
+        async with self.db.transaction() as tx:
             current_player = await self.db.get_player_by_id(player.user_id)
             if not current_player:
                 return False, "玩家不存在或已被删除。"
@@ -685,12 +691,14 @@ class BankManager:
                 (total_due, current_player.user_id, total_due)
             )
             if cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "灵石不足或玩家状态已变化，请重试。"
             loan_cursor = await self.db.conn.execute(
                 "UPDATE bank_loans SET status = 'closed' WHERE id = ? AND status = 'active'",
                 (loan_info["id"],)
             )
             if loan_cursor.rowcount != 1:
+                tx.mark_rollback_only()
                 return False, "贷款状态已变化，请重试。"
 
             bank_data = await self.db.ext.get_bank_account(current_player.user_id)
@@ -724,28 +732,32 @@ class BankManager:
         now = int(time.time())
         overdue_loans = await self.db.ext.get_overdue_loans(now)
         processed = []
-        
+
         for loan in overdue_loans:
             player = await self.db.get_player_by_id(loan["user_id"])
             if not player:
                 # 玩家已不存在，直接关闭贷款
-                await self.db.ext.mark_loan_overdue(loan["id"])
+                async with self.db.transaction():
+                    await self.db.ext.mark_loan_overdue(loan["id"], commit=False)
                 continue
-            
+
             player_name = player.user_name or f"道友{player.user_id[:6]}"
-            
-            # 删除玩家数据（银行追杀致死）- 级联删除所有关联数据
-            await self.db.delete_player_cascade(player.user_id)
-            
-            # 标记贷款逾期
-            await self.db.ext.mark_loan_overdue(loan["id"])
-            
-            # 记录流水
-            await self._add_transaction(
-                loan["user_id"], "bank_kill", 0, 0,
-                f"逾期未还款，被银行追杀致死"
-            )
-            
+            async with self.db.transaction():
+                # Re-check the loan while owning the transaction so a
+                # concurrent repayment cannot be followed by a deletion.
+                active_loan = await self.db.ext.get_active_loan(player.user_id)
+                if not active_loan or active_loan["id"] != loan["id"]:
+                    continue
+
+                # Delete the player, mark the loan, and write the ledger entry
+                # as one atomic operation.
+                await self.db.delete_player_cascade(player.user_id, commit=False)
+                await self.db.ext.mark_loan_overdue(loan["id"], commit=False)
+                await self._add_transaction(
+                    loan["user_id"], "bank_kill", 0, 0,
+                    "逾期未还款，被银行追杀致死", commit=False
+                )
+
             processed.append({
                 **loan,
                 "player_name": player_name,

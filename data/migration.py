@@ -138,6 +138,23 @@ async def _column_names(conn, table_name: str) -> set[str]:
         rows = await cursor.fetchall()
     return {row[1] if not isinstance(row, dict) else row["name"] for row in rows}
 
+
+async def _add_column_if_missing(conn, table_name: str, column_name: str, definition: str) -> bool:
+    """Add one schema column only when it is absent.
+
+    Checking first avoids turning an expected repeated migration into a
+    statement error.  Any missing table or other structural failure still
+    propagates to the migration transaction.
+    """
+    if not column_name.replace("_", "").isalnum():
+        raise ValueError(f"invalid column name: {column_name!r}")
+    if column_name in await _column_names(conn, table_name):
+        return False
+    await conn.execute(
+        f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+    )
+    return True
+
 async def _create_all_tables_v1(conn: aiosqlite.Connection):
     """创建所有表 - v1，只保留玩家基础信息"""
 
@@ -1196,16 +1213,14 @@ async def _migrate_to_v20(conn: aiosqlite.Connection, config_manager: ConfigMana
     logger.info("开始迁移到v20：用户CD表添加额外数据字段")
     
     # 添加extra_data字段用于存储额外信息（如秘境ID、战斗冷却等）
-    try:
-        await conn.execute("ALTER TABLE user_cd ADD COLUMN extra_data TEXT NOT NULL DEFAULT '{}'")
-    except Exception as e:
-        logger.warning(f"添加extra_data字段失败（可能已存在）: {e}")
-    
+    await _add_column_if_missing(
+        conn, "user_cd", "extra_data", "TEXT NOT NULL DEFAULT '{}'"
+    )
+
     # 添加last_collect_time字段到spirit_eyes表（修复灵眼收取时间计算）
-    try:
-        await conn.execute("ALTER TABLE spirit_eyes ADD COLUMN last_collect_time INTEGER")
-    except Exception as e:
-        logger.warning(f"添加last_collect_time字段失败（可能已存在）: {e}")
+    await _add_column_if_missing(
+        conn, "spirit_eyes", "last_collect_time", "INTEGER"
+    )
     
     # 添加双修请求持久化表
     await conn.execute("""
@@ -1239,51 +1254,17 @@ async def _migrate_to_v21(conn: aiosqlite.Connection, config_manager: ConfigMana
     logger.info("开始迁移到v21：添加战斗属性和技能系统字段")
     
     # 添加战斗属性字段
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN max_hp INTEGER DEFAULT 100")
-    except Exception as e:
-        logger.warning(f"添加max_hp字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN max_mp INTEGER DEFAULT 50")
-    except Exception as e:
-        logger.warning(f"添加max_mp字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN speed INTEGER DEFAULT 10")
-    except Exception as e:
-        logger.warning(f"添加speed字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN critical_rate REAL DEFAULT 0.05")
-    except Exception as e:
-        logger.warning(f"添加critical_rate字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN critical_damage REAL DEFAULT 1.5")
-    except Exception as e:
-        logger.warning(f"添加critical_damage字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN hit_rate REAL DEFAULT 0.95")
-    except Exception as e:
-        logger.warning(f"添加hit_rate字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN dodge_rate REAL DEFAULT 0.05")
-    except Exception as e:
-        logger.warning(f"添加dodge_rate字段失败（可能已存在）: {e}")
-    
+    await _add_column_if_missing(conn, "players", "max_hp", "INTEGER DEFAULT 100")
+    await _add_column_if_missing(conn, "players", "max_mp", "INTEGER DEFAULT 50")
+    await _add_column_if_missing(conn, "players", "speed", "INTEGER DEFAULT 10")
+    await _add_column_if_missing(conn, "players", "critical_rate", "REAL DEFAULT 0.05")
+    await _add_column_if_missing(conn, "players", "critical_damage", "REAL DEFAULT 1.5")
+    await _add_column_if_missing(conn, "players", "hit_rate", "REAL DEFAULT 0.95")
+    await _add_column_if_missing(conn, "players", "dodge_rate", "REAL DEFAULT 0.05")
+
     # 添加技能系统字段
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN learned_skills TEXT DEFAULT '[]'")
-    except Exception as e:
-        logger.warning(f"添加learned_skills字段失败（可能已存在）: {e}")
-    
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN equipped_skills TEXT DEFAULT '[]'")
-    except Exception as e:
-        logger.warning(f"添加equipped_skills字段失败（可能已存在）: {e}")
+    await _add_column_if_missing(conn, "players", "learned_skills", "TEXT DEFAULT '[]'")
+    await _add_column_if_missing(conn, "players", "equipped_skills", "TEXT DEFAULT '[]'")
     
     logger.info("v21迁移完成：战斗属性和技能系统字段已添加")
 
@@ -1293,20 +1274,15 @@ async def _migrate_to_v22(conn: aiosqlite.Connection, config_manager: ConfigMana
     """迁移到v22 - 添加道侣系统玩家字段"""
     logger.info("开始迁移到v22：添加道侣系统玩家字段")
 
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN partner_id TEXT NOT NULL DEFAULT ''")
-    except Exception as e:
-        logger.warning(f"添加partner_id字段失败（可能已存在）: {e}")
-
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN partner_bindtime INTEGER NOT NULL DEFAULT 0")
-    except Exception as e:
-        logger.warning(f"添加partner_bindtime字段失败（可能已存在）: {e}")
-
-    try:
-        await conn.execute("ALTER TABLE players ADD COLUMN partner_intimacy INTEGER NOT NULL DEFAULT 0")
-    except Exception as e:
-        logger.warning(f"添加partner_intimacy字段失败（可能已存在）: {e}")
+    await _add_column_if_missing(
+        conn, "players", "partner_id", "TEXT NOT NULL DEFAULT ''"
+    )
+    await _add_column_if_missing(
+        conn, "players", "partner_bindtime", "INTEGER NOT NULL DEFAULT 0"
+    )
+    await _add_column_if_missing(
+        conn, "players", "partner_intimacy", "INTEGER NOT NULL DEFAULT 0"
+    )
 
     logger.info("v22迁移完成：道侣系统字段已添加")
 

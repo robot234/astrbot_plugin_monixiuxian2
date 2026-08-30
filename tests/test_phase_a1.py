@@ -37,6 +37,10 @@ from _monixiuxian2_test_package.data.data_manager import DataBase
 from _monixiuxian2_test_package.data.migration import (
     MigrationManager,
     _create_all_tables_v1,
+    _create_all_tables_v2,
+    _migrate_to_v20,
+    _migrate_to_v21,
+    _migrate_to_v22,
     _migrate_to_v3,
     _migrate_to_v23,
 )
@@ -66,6 +70,29 @@ def player(user_id: str = "u", *, gold: int = 0, items: dict | None = None) -> P
     if items is not None:
         value.set_storage_ring_items(items)
     return value
+
+
+async def scalar(db, sql, params=()):
+    async with db.conn.execute(sql, params) as cursor:
+        row = await cursor.fetchone()
+    return row[0] if row else None
+
+
+class FakeCursor:
+    def __init__(self, rowcount=0, lastrowid=None):
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+
+
+class FakeResult:
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def __await__(self):
+        async def resolve():
+            return self.cursor
+
+        return resolve().__await__()
 
 
 class GateTests(unittest.IsolatedAsyncioTestCase):
@@ -137,6 +164,39 @@ class GateTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.gate.owner)
         await self.conn.execute("INSERT INTO values_ VALUES (11)")
 
+    async def test_default_execute_defers_commit_until_explicit_boundary(self):
+        await self.conn.execute("INSERT INTO values_ VALUES (1)")
+        self.assertTrue(self.raw.in_transaction)
+        await self.conn.rollback()
+
+        async with self.conn.execute("SELECT value FROM values_") as cursor:
+            self.assertEqual(await cursor.fetchall(), [])
+
+        await self.conn.execute("INSERT INTO values_ VALUES (2)")
+        await self.conn.commit()
+        async with self.conn.execute("SELECT value FROM values_") as cursor:
+            self.assertEqual([row[0] for row in await cursor.fetchall()], [2])
+
+    async def test_fetchmany_keeps_read_lease_until_exhausted(self):
+        await self.conn.execute("INSERT INTO values_ VALUES (1)", commit=True)
+        await self.conn.execute("INSERT INTO values_ VALUES (2)", commit=True)
+        writer_done = asyncio.Event()
+
+        async def writer():
+            await self.conn.execute("INSERT INTO values_ VALUES (3)", commit=True)
+            writer_done.set()
+
+        async with self.conn.execute("SELECT value FROM values_ ORDER BY value") as cursor:
+            self.assertEqual(await cursor.fetchmany(1), [(1,)])
+            writer_task = asyncio.create_task(writer())
+            await asyncio.sleep(0)
+            self.assertFalse(writer_done.is_set())
+            self.assertEqual(await cursor.fetchmany(1), [(2,)])
+            self.assertFalse(writer_done.is_set())
+            self.assertEqual(await cursor.fetchmany(1), [])
+            await asyncio.wait_for(writer_done.wait(), 1)
+            await writer_task
+
     async def test_executescript_is_rejected_inside_structured_transaction(self):
         with self.assertRaises(TransactionStateError):
             async with self.gate.transaction():
@@ -204,6 +264,118 @@ class BankTests(unittest.IsolatedAsyncioTestCase):
         current = await self.db.get_player_by_id("u")
         self.assertEqual(current.gold, 9_995)
 
+    async def test_rowcount_conflicts_roll_back_withdraw_borrow_and_repay(self):
+        ok, _ = await self.bank.deposit(self.original, 1_000)
+        self.assertTrue(ok)
+
+        original_execute = self.db.conn.execute
+
+        def fail_player_credit(sql, parameters=None, *, commit=None):
+            if sql.lstrip().upper().startswith("UPDATE PLAYERS SET GOLD = GOLD +"):
+                return FakeResult(FakeCursor(rowcount=0))
+            return original_execute(sql, parameters, commit=commit)
+
+        self.db.conn.execute = fail_player_credit
+        try:
+            ok, _ = await self.bank.withdraw(self.original, 500)
+        finally:
+            self.db.conn.execute = original_execute
+        self.assertFalse(ok)
+        self.assertEqual((await self.db.get_player_by_id("u")).gold, 9_000)
+        self.assertEqual((await self.db.ext.get_bank_account("u"))["balance"], 1_000)
+        self.assertEqual(len(await self.bank.get_transactions("u")), 1)
+
+        original_execute = self.db.conn.execute
+
+        def fail_player_credit_for_borrow(sql, parameters=None, *, commit=None):
+            if sql.lstrip().upper().startswith("UPDATE PLAYERS SET GOLD = GOLD +"):
+                return FakeResult(FakeCursor(rowcount=0))
+            return original_execute(sql, parameters, commit=commit)
+
+        self.db.conn.execute = fail_player_credit_for_borrow
+        try:
+            ok, _ = await self.bank.borrow(self.original, 1_000)
+        finally:
+            self.db.conn.execute = original_execute
+        self.assertFalse(ok)
+        self.assertIsNone(await self.db.ext.get_active_loan("u"))
+        self.assertEqual((await self.db.get_player_by_id("u")).gold, 9_000)
+
+        ok, _ = await self.bank.borrow(self.original, 1_000)
+        self.assertTrue(ok)
+        original_execute = self.db.conn.execute
+
+        def fail_loan_close(sql, parameters=None, *, commit=None):
+            if sql.lstrip().upper().startswith("UPDATE BANK_LOANS SET STATUS = 'CLOSED'"):
+                return FakeResult(FakeCursor(rowcount=0))
+            return original_execute(sql, parameters, commit=commit)
+
+        self.db.conn.execute = fail_loan_close
+        try:
+            ok, _ = await self.bank.repay(self.original)
+        finally:
+            self.db.conn.execute = original_execute
+        self.assertFalse(ok)
+        self.assertEqual((await self.db.get_player_by_id("u")).gold, 10_000)
+        self.assertIsNotNone(await self.db.ext.get_active_loan("u"))
+
+
+class CascadeTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.db = await create_full_db()
+        self.value = player(gold=100)
+        await self.db.create_player(self.value)
+
+    async def asyncTearDown(self):
+        await self.db.close()
+
+    async def test_cascade_uses_real_combat_cooldown_schema_and_is_atomic(self):
+        await self.db.ext.update_bank_account("u", 25, 1)
+        async with self.db.transaction():
+            await self.db.conn.execute(
+                "INSERT INTO combat_cooldowns(user_id, last_duel_time, last_spar_time) VALUES (?, ?, ?)",
+                ("u", 1, 2),
+                commit=False,
+            )
+
+        await self.db.delete_player_cascade("u")
+        self.assertIsNone(await self.db.get_player_by_id("u"))
+        self.assertIsNone(await self.db.ext.get_bank_account("u"))
+        self.assertEqual(await scalar(self.db, "SELECT COUNT(*) FROM combat_cooldowns WHERE user_id = ?", ("u",)), 0)
+
+    async def test_cascade_structural_failure_rolls_back_prior_deletes(self):
+        await self.db.ext.update_bank_account("u", 25, 1)
+        await self.db.conn.execute("DROP TABLE combat_cooldowns", commit=True)
+        with self.assertRaises(Exception):
+            await self.db.delete_player_cascade("u")
+        self.assertIsNotNone(await self.db.get_player_by_id("u"))
+        self.assertIsNotNone(await self.db.ext.get_bank_account("u"))
+
+    async def test_overdue_processing_deletes_and_ledger_writes_atomically(self):
+        now = int(__import__("time").time())
+        await self.db.ext.create_loan("u", 1_000, 0.005, now - 10 * 86400, now - 1)
+        async with self.db.transaction():
+            await self.db.conn.execute(
+                "INSERT INTO combat_cooldowns(user_id, last_duel_time, last_spar_time) VALUES (?, ?, ?)",
+                ("u", 1, 2),
+                commit=False,
+            )
+
+        bank = BankManager(self.db)
+        processed = await bank.check_and_process_overdue_loans()
+        self.assertEqual(len(processed), 1)
+        self.assertIsNone(await self.db.get_player_by_id("u"))
+        self.assertEqual(await scalar(self.db, "SELECT status FROM bank_loans WHERE user_id = ?", ("u",)), "overdue")
+        self.assertEqual(
+            await scalar(
+                self.db,
+                "SELECT COUNT(*) FROM bank_transactions WHERE user_id = ? AND trans_type = 'bank_kill'",
+                ("u",),
+            ),
+            1,
+        )
+        self.assertEqual(await scalar(self.db, "SELECT COUNT(*) FROM combat_cooldowns WHERE user_id = ?", ("u",)), 0)
+
 
 class MigrationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
@@ -249,6 +421,54 @@ class MigrationTests(unittest.IsolatedAsyncioTestCase):
             await self.db.conn.execute("INSERT INTO db_info VALUES (24)", commit=False)
         with self.assertRaises(ValueError):
             await MigrationManager(self.db.conn, None).migrate()
+
+    async def test_v20_v22_partial_schema_migrations_are_idempotent(self):
+        self.db = DataBase(":memory:")
+        await self.db.connect()
+        async with self.db.transaction():
+            await self.db.conn.execute(
+                "CREATE TABLE user_cd(user_id TEXT PRIMARY KEY, type INTEGER, create_time INTEGER, scheduled_time INTEGER)",
+                commit=False,
+            )
+            await self.db.conn.execute(
+                "CREATE TABLE spirit_eyes(eye_id INTEGER PRIMARY KEY, spawn_time INTEGER)",
+                commit=False,
+            )
+            await self.db.conn.execute(
+                "CREATE TABLE players(user_id TEXT PRIMARY KEY)", commit=False
+            )
+            await _migrate_to_v20(self.db.conn, None)
+            await _migrate_to_v20(self.db.conn, None)
+            await _migrate_to_v21(self.db.conn, None)
+            await _migrate_to_v21(self.db.conn, None)
+            await _migrate_to_v22(self.db.conn, None)
+            await _migrate_to_v22(self.db.conn, None)
+
+        async with self.db.conn.execute("PRAGMA table_info(user_cd)") as cursor:
+            user_cd_columns = [row[1] for row in await cursor.fetchall()]
+        async with self.db.conn.execute("PRAGMA table_info(spirit_eyes)") as cursor:
+            eye_columns = [row[1] for row in await cursor.fetchall()]
+        async with self.db.conn.execute("PRAGMA table_info(players)") as cursor:
+            player_columns = [row[1] for row in await cursor.fetchall()]
+        self.assertEqual(user_cd_columns.count("extra_data"), 1)
+        self.assertEqual(eye_columns.count("last_collect_time"), 1)
+        for column in (
+            "max_hp", "max_mp", "speed", "critical_rate", "critical_damage",
+            "hit_rate", "dodge_rate", "learned_skills", "equipped_skills",
+            "partner_id", "partner_bindtime", "partner_intimacy",
+        ):
+            self.assertEqual(player_columns.count(column), 1)
+
+    async def test_complete_v2_schema_fast_forwards_to_latest(self):
+        self.db = DataBase(":memory:")
+        await self.db.connect()
+        async with self.db.transaction():
+            await _create_all_tables_v2(self.db.conn)
+            await self.db.conn.execute(
+                "INSERT INTO db_info(version) VALUES (2)", commit=False
+            )
+        await MigrationManager(self.db.conn, None).migrate()
+        self.assertEqual(await scalar(self.db, "SELECT version FROM db_info"), 23)
 
 
 class StorageRingTests(unittest.IsolatedAsyncioTestCase):

@@ -200,6 +200,10 @@ class TransactionGate:
         self._unhealthy = False
         self._closed = False
         self._structured = False
+        # A legacy execute without an explicit commit owns the gate until
+        # commit() or rollback(), matching sqlite3 transaction semantics.
+        self._implicit = False
+        self._stale_cleanup: Optional[asyncio.Task[Any]] = None
 
     async def _await_cleanup(self, awaitable):
         """Finish a rollback/close even when the caller is cancelled.
@@ -239,6 +243,13 @@ class TransactionGate:
         """Fail closed on future operations until the database reconnects."""
         self._unhealthy = True
 
+    def mark_rollback_only(self) -> None:
+        """Make the current transaction roll back when its owner exits."""
+        task = self._task()
+        if self._owner is not task:
+            raise TransactionStateError("rollback-only requires the transaction owner")
+        self._rollback_only = True
+
     def _check(self) -> None:
         if self._closed:
             raise UnhealthyConnectionError("database connection is closed")
@@ -251,12 +262,13 @@ class TransactionGate:
             raise TransactionStateError("database access requires an asyncio task")
         return task
 
-    async def _acquire(self, *, commit: bool) -> _Lease:
+    async def _acquire(self, *, commit: Optional[bool]) -> _Lease:
         self._check()
+        await self._recover_stale_owner()
         task = self._task()
         if self._owner is task:
             return _Lease(self, owner=True)
-        if not commit:
+        if commit is False:
             raise TransactionStateError("commit=False is only valid inside the transaction owner")
         await self._lock.acquire()
         try:
@@ -264,14 +276,69 @@ class TransactionGate:
             self._owner = task
             self._depth = 1
             self._rollback_only = False
+            self._structured = False
+            self._implicit = False
             return _Lease(self, owner=False)
         except BaseException:
             self._lock.release()
             raise
 
-    async def operation(self, *, commit: bool = True) -> _Lease:
+    async def _recover_stale_owner(self) -> None:
+        """Rollback a transaction whose task exited without cleanup."""
+        owner = self._owner
+        if owner is None or not owner.done():
+            return
+        cleanup = self._stale_cleanup
+        if cleanup is None:
+            cleanup = asyncio.create_task(self._rollback_stale_owner())
+            self._stale_cleanup = cleanup
+        try:
+            await cleanup
+        finally:
+            if cleanup.done() and self._stale_cleanup is cleanup:
+                self._stale_cleanup = None
+
+    async def _rollback_stale_owner(self) -> None:
+        try:
+            await self._await_cleanup(self.raw.rollback())
+        except BaseException:
+            self._unhealthy = True
+            raise
+        finally:
+            self._owner = None
+            self._depth = 0
+            self._rollback_only = False
+            self._structured = False
+            self._implicit = False
+            if self._lock.locked():
+                self._lock.release()
+
+    async def operation(self, *, commit: Optional[bool] = None) -> _Lease:
         """Acquire the gate for one statement or join the current owner."""
         return await self._acquire(commit=commit)
+
+    async def operation_deferred_success(self, lease: _Lease) -> None:
+        """Release a raw-style standalone operation without committing it.
+
+        The compatibility API deliberately leaves commit ownership to the
+        caller, just like aiosqlite.  Structured transactions use the gate's
+        owner lease; a legacy statement by itself must not strand the gate if
+        its task returns before a later explicit commit/rollback.
+        """
+        if lease.released or lease.owner:
+            return
+        lease.released = True
+        if getattr(self.raw, "in_transaction", False):
+            # DML has opened a sqlite transaction. Keep ownership until the
+            # same task explicitly commits or rolls it back.
+            self._implicit = True
+            return
+        self._owner = None
+        self._depth = 0
+        self._rollback_only = False
+        self._structured = False
+        self._implicit = False
+        self._lock.release()
 
     async def operation_success(self, lease: _Lease) -> None:
         if lease.released or lease.owner:
@@ -287,6 +354,7 @@ class TransactionGate:
             self._depth = 0
             self._rollback_only = False
             self._structured = False
+            self._implicit = False
             self._lock.release()
 
     async def operation_failure(self, lease: _Lease) -> None:
@@ -305,11 +373,14 @@ class TransactionGate:
             self._owner = None
             self._depth = 0
             self._rollback_only = False
+            self._structured = False
+            self._implicit = False
             self._lock.release()
 
     async def begin(self, sql: str = "BEGIN IMMEDIATE", *, structured: bool = False) -> _Lease:
         """Start a manual or structured transaction."""
         self._check()
+        await self._recover_stale_owner()
         task = self._task()
         if self._owner is task:
             self._depth += 1
@@ -324,6 +395,7 @@ class TransactionGate:
             self._depth = 1
             self._rollback_only = False
             self._structured = structured
+            self._implicit = False
             return _Lease(self, owner=False)
         except BaseException:
             try:
@@ -359,6 +431,7 @@ class TransactionGate:
             self._depth = 0
             self._rollback_only = False
             self._structured = False
+            self._implicit = False
             self._lock.release()
 
     async def rollback(self) -> None:
@@ -385,6 +458,7 @@ class TransactionGate:
             self._depth = 0
             self._rollback_only = False
             self._structured = False
+            self._implicit = False
             self._lock.release()
 
     async def finish(self) -> None:
@@ -409,6 +483,7 @@ class TransactionGate:
             self._depth = 0
             self._rollback_only = False
             self._structured = False
+            self._implicit = False
             self._lock.release()
 
     def transaction(self, *, immediate: bool = True):
@@ -418,6 +493,8 @@ class TransactionGate:
         if self._closed:
             return
         task = asyncio.current_task()
+        if self._owner is not None and self._owner is not task:
+            await self._recover_stale_owner()
         if self._owner is not None and self._owner is not task:
             await self._lock.acquire()
             self._lock.release()
@@ -429,6 +506,7 @@ class TransactionGate:
                 self._depth = 0
                 self._rollback_only = False
                 self._structured = False
+                self._implicit = False
                 if self._lock.locked():
                     self._lock.release()
         try:
@@ -463,14 +541,25 @@ class _TransactionContext:
 class ManagedCursor:
     """Cursor proxy that releases a standalone read lease after fetching."""
 
-    def __init__(self, raw: Optional[aiosqlite.Cursor], gate: TransactionGate, lease: Optional[_Lease]):
+    def __init__(
+        self,
+        raw: Optional[aiosqlite.Cursor],
+        gate: TransactionGate,
+        lease: Optional[_Lease],
+        *,
+        deferred: bool = False,
+    ):
         self._raw = raw
         self._gate = gate
         self._lease = lease
+        self._deferred = deferred
 
     async def _release_read(self) -> None:
         if self._lease is not None and not self._lease.released:
-            await self._gate.operation_success(self._lease)
+            if self._deferred:
+                await self._gate.operation_deferred_success(self._lease)
+            else:
+                await self._gate.operation_success(self._lease)
 
     async def fetchone(self):
         try:
@@ -505,19 +594,26 @@ class ManagedCursor:
             if self._lease is not None:
                 await self._gate.operation_failure(self._lease)
             raise
-        await self._release_read()
+        # Keep the read lease while a batch still has rows.  Releasing it
+        # between batches would let another task use the shared connection
+        # while this cursor is still being iterated.
+        if not rows:
+            await self._release_read()
         return rows
 
     def __aiter__(self):
         return self._iterate()
 
     async def _iterate(self):
-        while True:
-            rows = await self.fetchmany()
-            if not rows:
-                return
-            for row in rows:
-                yield row
+        try:
+            while True:
+                rows = await self.fetchmany()
+                if not rows:
+                    return
+                for row in rows:
+                    yield row
+        finally:
+            await self.close()
 
     async def close(self):
         try:
@@ -548,7 +644,7 @@ class ManagedCursor:
 class ManagedResult:
     """Awaitable/async-context-manager matching aiosqlite's Result API."""
 
-    def __init__(self, connection: "ManagedConnection", sql: str, parameters: Iterable[Any], *, commit: bool, operation: str = "execute"):
+    def __init__(self, connection: "ManagedConnection", sql: str, parameters: Iterable[Any], *, commit: Optional[bool], operation: str = "execute"):
         self.connection = connection
         self.sql = sql
         self.parameters = parameters
@@ -592,11 +688,19 @@ class ManagedResult:
             else:
                 raw_cursor = await self.connection.raw.execute(self.sql, self.parameters)
             if _is_read_statement(self.sql) and not lease.owner:
-                self._cursor = ManagedCursor(raw_cursor, self.connection.gate, lease)
+                self._cursor = ManagedCursor(
+                    raw_cursor,
+                    self.connection.gate,
+                    lease,
+                    deferred=self.commit is None,
+                )
             else:
                 self._cursor = ManagedCursor(raw_cursor, self.connection.gate, None)
                 if not lease.owner:
-                    await self.connection.gate.operation_success(lease)
+                    if self.commit is None:
+                        await self.connection.gate.operation_deferred_success(lease)
+                    else:
+                        await self.connection.gate.operation_success(lease)
             return self._cursor
         except BaseException:
             await self.connection.gate.operation_failure(lease)
@@ -620,13 +724,13 @@ class ManagedConnection:
         self.raw = raw
         self.gate = gate
 
-    def execute(self, sql: str, parameters: Optional[Iterable[Any]] = None, *, commit: bool = True) -> ManagedResult:
+    def execute(self, sql: str, parameters: Optional[Iterable[Any]] = None, *, commit: Optional[bool] = None) -> ManagedResult:
         return ManagedResult(self, sql, [] if parameters is None else parameters, commit=commit)
 
-    def executemany(self, sql: str, parameters: Iterable[Iterable[Any]], *, commit: bool = True) -> ManagedResult:
+    def executemany(self, sql: str, parameters: Iterable[Iterable[Any]], *, commit: Optional[bool] = None) -> ManagedResult:
         return ManagedResult(self, sql, parameters, commit=commit, operation="executemany")
 
-    def executescript(self, sql_script: str, *, commit: bool = True) -> ManagedResult:
+    def executescript(self, sql_script: str, *, commit: Optional[bool] = None) -> ManagedResult:
         return ManagedResult(self, sql_script, [], commit=commit, operation="executescript")
 
     async def commit(self):

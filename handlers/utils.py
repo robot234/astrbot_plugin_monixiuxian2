@@ -5,6 +5,7 @@ import time
 from functools import wraps
 from typing import Callable, Coroutine, AsyncGenerator
 
+from astrbot.api import logger
 from astrbot.api.event import AstrMessageEvent
 from ..models import Player
 from ..models_extended import UserStatus
@@ -125,102 +126,85 @@ async def _check_loan_status(db, player: Player) -> dict:
     Returns:
         dict: {is_dead, message, warning_message} 或 None
     """
-    try:
-        loan = await db.ext.get_active_loan(player.user_id)
-        if not loan:
-            return None
-        
-        now = int(time.time())
-        due_at = loan["due_at"]
-        
-        # 检查是否已逾期
-        if now > due_at:
-            # 使用事务保护，防止并发删除
-            await db.conn.execute("BEGIN IMMEDIATE")
-            try:
-                # 重新检查贷款状态（可能已被其他请求处理）
+    loan = await db.ext.get_active_loan(player.user_id)
+    if not loan:
+        return None
+
+    now = int(time.time())
+    due_at = loan["due_at"]
+
+    # Re-check and settle the entire death path under one structured
+    # transaction.  Database/schema errors are logged and propagated; a
+    # committed death is the only path that returns is_dead=True.
+    if now > due_at:
+        try:
+            async with db.transaction():
                 loan = await db.ext.get_active_loan(player.user_id)
                 if not loan or loan["status"] != "active":
-                    await db.conn.rollback()
                     return None
-                
-                # 再次检查是否逾期
                 if now <= loan["due_at"]:
-                    await db.conn.rollback()
                     return None
-                
+
                 player_name = player.user_name or f"道友{player.user_id[:6]}"
-                
-                # 删除玩家（级联删除所有关联数据）
-                await db.delete_player_cascade(player.user_id)
-                
-                # 标记贷款逾期
-                await db.ext.mark_loan_overdue(loan["id"])
-                
-                # 记录流水
+                await db.delete_player_cascade(player.user_id, commit=False)
+                await db.ext.mark_loan_overdue(loan["id"], commit=False)
                 await db.ext.add_bank_transaction(
                     player.user_id, "bank_kill", 0, 0,
-                    "逾期未还款，被银行追杀致死", now
+                    "逾期未还款，被银行追杀致死", now, commit=False
                 )
-                
-                await db.conn.commit()
-                
-                loan_type_name = "突破贷款" if loan["loan_type"] == "breakthrough" else "普通贷款"
-                
-                return {
-                    "is_dead": True,
-                    "message": (
-                        f"💀 银行追杀令 💀\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"道友【{player_name}】因{loan_type_name}逾期未还\n"
-                        f"欠款本金：{loan['principal']:,} 灵石\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"银行派出的追杀者已将你击杀！\n"
-                        f"所有修为和装备化为虚无...\n"
-                        f"━━━━━━━━━━━━━━━\n"
-                        f"若想重新修仙，请使用「我要修仙」命令"
-                    )
-                }
-            except Exception:
-                await db.conn.rollback()
-                raise
-        
-        # 计算剩余时间
-        remaining_seconds = due_at - now
-        remaining_days = remaining_seconds // 86400
-        remaining_hours = (remaining_seconds % 86400) // 3600
-        
-        # 计算应还金额
-        days_borrowed = max(1, (now - loan["borrowed_at"]) // 86400)
-        interest = int(loan["principal"] * loan["interest_rate"] * days_borrowed)
-        total_due = loan["principal"] + interest
-        
-        loan_type_name = "突破贷款" if loan["loan_type"] == "breakthrough" else "普通贷款"
-        
-        # 根据剩余时间设置警告等级
-        if remaining_days <= 0:
-            urgency = "🔴 紧急"
-            time_str = f"{remaining_hours} 小时"
-        elif remaining_days <= 1:
-            urgency = "🟠 警告"
-            time_str = f"{remaining_days} 天 {remaining_hours} 小时"
-        else:
-            urgency = "🟡 提醒"
-            time_str = f"{remaining_days} 天"
-        
-        warning_message = (
-            f"\n━━━━━━━━━━━━━━━\n"
-            f"{urgency}【{loan_type_name}还款提醒】\n"
-            f"应还金额：{total_due:,} 灵石\n"
-            f"剩余时间：{time_str}\n"
-            f"⚠️ 逾期将被银行追杀致死！\n"
-            f"请使用 /还款 命令还款"
-        )
-        
-        return {
-            "is_dead": False,
-            "warning_message": warning_message
-        }
-        
-    except Exception:
-        return None
+
+            loan_type_name = "突破贷款" if loan["loan_type"] == "breakthrough" else "普通贷款"
+            return {
+                "is_dead": True,
+                "message": (
+                    f"💀 银行追杀令 💀\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"道友【{player_name}】因{loan_type_name}逾期未还\n"
+                    f"欠款本金：{loan['principal']:,} 灵石\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"银行派出的追杀者已将你击杀！\n"
+                    f"所有修为和装备化为虚无...\n"
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"若想重新修仙，请使用「我要修仙」命令"
+                )
+            }
+        except Exception as exc:
+            logger.error(f"[loan] 处理逾期追杀失败，事务已回滚: {exc}")
+            raise
+
+    # 计算剩余时间
+    remaining_seconds = due_at - now
+    remaining_days = remaining_seconds // 86400
+    remaining_hours = (remaining_seconds % 86400) // 3600
+
+    # 计算应还金额
+    days_borrowed = max(1, (now - loan["borrowed_at"]) // 86400)
+    interest = int(loan["principal"] * loan["interest_rate"] * days_borrowed)
+    total_due = loan["principal"] + interest
+
+    loan_type_name = "突破贷款" if loan["loan_type"] == "breakthrough" else "普通贷款"
+
+    # 根据剩余时间设置警告等级
+    if remaining_days <= 0:
+        urgency = "🔴 紧急"
+        time_str = f"{remaining_hours} 小时"
+    elif remaining_days <= 1:
+        urgency = "🟠 警告"
+        time_str = f"{remaining_days} 天 {remaining_hours} 小时"
+    else:
+        urgency = "🟡 提醒"
+        time_str = f"{remaining_days} 天"
+
+    warning_message = (
+        f"\n━━━━━━━━━━━━━━━\n"
+        f"{urgency}【{loan_type_name}还款提醒】\n"
+        f"应还金额：{total_due:,} 灵石\n"
+        f"剩余时间：{time_str}\n"
+        f"⚠️ 逾期将被银行追杀致死！\n"
+        f"请使用 /还款 命令还款"
+    )
+
+    return {
+        "is_dead": False,
+        "warning_message": warning_message
+    }

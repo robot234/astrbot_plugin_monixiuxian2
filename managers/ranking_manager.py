@@ -114,21 +114,21 @@ class RankingManager:
     async def get_arena_rank(self, user_id: str) -> Optional[int]:
         """获取玩家的擂台排名"""
         await self._ensure_db_connection()
-        cursor = await self.db.conn.execute(
+        async with self.db.conn.execute(
             "SELECT rank FROM arena_ranking WHERE user_id = ?",
             (user_id,)
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row[0] if row else None
     
     async def get_arena_info(self, user_id: str) -> Optional[dict]:
         """获取玩家的擂台信息"""
         await self._ensure_db_connection()
-        cursor = await self.db.conn.execute(
+        async with self.db.conn.execute(
             "SELECT rank, wins, losses, last_challenge_time FROM arena_ranking WHERE user_id = ?",
             (user_id,)
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         if row:
             return {
                 "rank": row[0],
@@ -141,21 +141,21 @@ class RankingManager:
     async def get_player_by_rank(self, rank: int) -> Optional[str]:
         """根据排名获取玩家ID"""
         await self._ensure_db_connection()
-        cursor = await self.db.conn.execute(
+        async with self.db.conn.execute(
             "SELECT user_id FROM arena_ranking WHERE rank = ?",
             (rank,)
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row[0] if row else None
     
     async def get_arena_ranking_list(self, limit: int = ARENA_MAX_RANK) -> List[dict]:
         """获取擂台排行榜列表"""
         await self._ensure_db_connection()
-        cursor = await self.db.conn.execute(
+        async with self.db.conn.execute(
             "SELECT user_id, rank, wins, losses FROM arena_ranking ORDER BY rank ASC LIMIT ?",
             (limit,)
-        )
-        rows = await cursor.fetchall()
+        ) as cursor:
+            rows = await cursor.fetchall()
         return [
             {"user_id": row[0], "rank": row[1], "wins": row[2], "losses": row[3]}
             for row in rows
@@ -164,10 +164,10 @@ class RankingManager:
     async def get_total_arena_players(self) -> int:
         """获取擂台总人数"""
         await self._ensure_db_connection()
-        cursor = await self.db.conn.execute(
+        async with self.db.conn.execute(
             "SELECT COUNT(*) FROM arena_ranking"
-        )
-        row = await cursor.fetchone()
+        ) as cursor:
+            row = await cursor.fetchone()
         return row[0] if row else 0
     
     def _check_failed_challenge_cooldown(self, user_id: str) -> Tuple[bool, int]:
